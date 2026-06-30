@@ -20,7 +20,7 @@ const Hero = () => {
   };
 
   return (
-    <section id="home" className="relative min-h-screen flex flex-col justify-center pt-36 pb-16 overflow-hidden">
+    <section id="home" className="relative min-h-screen flex flex-col justify-center pt-44 md:pt-56 lg:pt-64 pb-16 overflow-hidden">
       {/* Background with luxury green glows and floating particles */}
       <BackgroundEffects variant="hero" />
 
@@ -168,9 +168,9 @@ const Hero = () => {
             <motion.img
               src={foodPlate}
               alt="Premium food plate"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 40, repeat: Infinity, ease: 'linear' }}
-              className="absolute right-[-30px] bottom-[5%] w-[180px] h-[180px] object-contain opacity-85 z-0 pointer-events-none filter drop-shadow-[0_15px_20px_rgba(0,0,0,0.3)] hidden md:block"
+              animate={{ y: [0, -8, 0] }}
+              transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute right-[-30px] bottom-[5%] w-[180px] h-[180px] object-contain opacity-85 z-0 pointer-events-none hidden md:block"
             />
           </div>
 

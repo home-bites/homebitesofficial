@@ -82,7 +82,7 @@ const Showcase = () => {
               transition={{ duration: 1.2, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
               animate={{ y: [0, -12, 0] }}
               style={{ originX: 0.5, originY: 0.5 }}
-              className="absolute left-[-15px] md:left-[30px] bottom-[15%] z-20 w-[180px] md:w-[220px] filter drop-shadow-[0_20px_25px_rgba(0,0,0,0.25)] select-none"
+              className="absolute left-[-15px] md:left-[30px] bottom-[15%] z-20 w-[180px] md:w-[220px] select-none"
             >
               <motion.img 
                 src={deliveryBag} 
@@ -101,13 +101,11 @@ const Showcase = () => {
               transition={{ duration: 1.2, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
               animate={{ y: [0, 15, 0] }}
               style={{ originX: 0.5, originY: 0.5 }}
-              className="absolute right-[-15px] md:right-[30px] top-[10%] z-20 w-[170px] md:w-[210px] filter drop-shadow-[0_20px_25px_rgba(0,0,0,0.25)] select-none"
+              className="absolute right-[-15px] md:right-[30px] top-[10%] z-20 w-[170px] md:w-[210px] select-none"
             >
               <motion.img 
                 src={foodPlate} 
                 alt="Delicious Gourmet Food Plate" 
-                animate={{ rotate: 360 }}
-                transition={{ duration: 45, repeat: Infinity, ease: 'linear' }}
                 className="w-full object-contain pointer-events-none"
               />
             </motion.div>
@@ -119,7 +117,7 @@ const Showcase = () => {
               viewport={{ once: true }}
               transition={{ duration: 1.2, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
               animate={{ y: [0, -8, 0] }}
-              className="absolute left-[20px] md:left-[90px] top-[5%] z-20 w-[90px] md:w-[120px] filter drop-shadow-[0_15px_15px_rgba(0,0,0,0.2)] select-none"
+              className="absolute left-[20px] md:left-[90px] top-[5%] z-20 w-[90px] md:w-[120px] select-none"
             >
               <motion.img 
                 src={cloche} 
