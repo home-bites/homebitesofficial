@@ -19,10 +19,14 @@ const Navbar = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Privacy is a real page, not an on-page anchor: Google Play requires the
+  // policy to be reachable at its own publicly accessible URL. A plain <a>
+  // handles both cases, so no special casing is needed in the render.
   const navLinks = [
     { name: 'Home', href: '#home' },
     { name: 'About', href: '#about' },
     { name: 'Contact', href: '#contact' },
+    { name: 'Privacy', href: '/privacy-policy.html' },
   ];
 
   return (

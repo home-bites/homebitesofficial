@@ -7,6 +7,7 @@ const Footer = () => {
     { name: 'Home', href: '#home' },
     { name: 'About', href: '#about' },
     { name: 'Contact', href: '#contact' },
+    { name: 'Privacy Policy', href: '/privacy-policy.html' },
   ];
 
   // Social Icons using simple crisp SVG shapes
@@ -126,7 +127,7 @@ const Footer = () => {
             © 2026 HomeBites. All rights reserved.
           </p>
           <div className="flex gap-6 text-xs text-brand-offwhite/40 font-sans">
-            <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
+            <a href="/privacy-policy.html" className="hover:text-white transition-colors">Privacy Policy</a>
             <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
           </div>
         </div>
