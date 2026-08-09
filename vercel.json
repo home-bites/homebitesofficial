@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+
+  "//": [
+    "cleanUrls makes /delete-account resolve to public/delete-account.html and",
+    "/privacy-policy resolve to public/privacy-policy.html, and 308-redirects the",
+    ".html forms to the extensionless ones.",
+    "",
+    "Set explicitly rather than relying on Vercel's default because both URLs are",
+    "submitted to the Google Play Console. Play rejects a Data safety submission",
+    "whose account-deletion URL does not resolve, and the existing in-app and",
+    "footer links point at /privacy-policy.html, which this keeps working via the",
+    "redirect.",
+    "",
+    "trailingSlash is pinned for the same reason: leaving it unset lets the",
+    "platform default change underneath a URL that external reviewers depend on."
+  ],
+
+  "cleanUrls": true,
+  "trailingSlash": false
+}

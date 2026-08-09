@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/favicon1.png" />
+
+  <title>Delete Your Account | HomeBites</title>
+  <meta name="description"
+    content="Request deletion of your HomeBites account and associated data, or delete your account directly from the HomeBites app. Details of what is removed, what is retained and how long it takes." />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#0B4D3B" />
+
+  <!--
+    Deliberately a static page in /public rather than a React route, for the same
+    reason as privacy-policy.html.
+
+    Google Play requires the account-deletion URL to be publicly accessible
+    without signing in, without installing the app, and without geofencing. This
+    site is a single-page React app with no router, so a client-rendered route
+    would depend on JavaScript and on host rewrite rules. Vite copies /public
+    verbatim into /dist, so this is served as plain HTML on any host and stays
+    reachable even if the bundle fails to load.
+
+    Vercel serves /public/delete-account.html at /delete-account, which is the
+    URL submitted to the Play Console.
+
+    The form has no backend. It composes a mailto: message rather than POSTing
+    to an endpoint, because an unauthenticated public endpoint that triggers
+    account deletion is an abuse surface — anyone could submit another person's
+    phone number. Identity is verified by a human against the account before
+    anything is deleted. The address is also printed in plain text so the page
+    still works with JavaScript disabled or a mail client unconfigured.
+  -->
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Montserrat:wght@600;700;800&display=swap"
+    rel="stylesheet" />
+
+  <style>
+    /* Brand tokens mirror tailwind.config.js and privacy-policy.html. Inlined
+       because this file sits outside the Tailwind content glob. */
+    :root {
+      --primary: #0B4D3B;
+      --secondary: #82C341;
+      --accent: #FF7A00;
+      --offwhite: #F8F5EE;
+      --dark: #1C1C1C;
+      --muted: #5A6660;
+      --rule: #E4E7E5;
+      --danger: #B3261E;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--offwhite);
+      color: var(--dark);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      line-height: 1.75;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header.masthead {
+      background: linear-gradient(135deg, var(--primary) 0%, #06261E 100%);
+      color: #fff;
+      padding: 56px 24px 64px;
+    }
+
+    .wrap { max-width: 820px; margin: 0 auto; }
+
+    .back {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: rgba(255, 255, 255, 0.75);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 28px;
+    }
+    .back:hover { color: var(--secondary); }
+
+    header.masthead h1 {
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 800;
+      font-size: clamp(28px, 5vw, 42px);
+      line-height: 1.15;
+      margin: 0 0 12px;
+      letter-spacing: -0.02em;
+    }
+
+    header.masthead p.lede {
+      margin: 0 0 16px;
+      color: rgba(255, 255, 255, 0.82);
+      font-size: 17px;
+      max-width: 60ch;
+    }
+
+    .updated {
+      display: inline-block;
+      background: rgba(130, 195, 65, 0.18);
+      border: 1px solid rgba(130, 195, 65, 0.45);
+      color: #DCF0C4;
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    main {
+      max-width: 820px;
+      margin: -32px auto 0;
+      background: #fff;
+      border-radius: 20px;
+      padding: 40px clamp(20px, 5vw, 56px) 56px;
+      box-shadow: 0 10px 30px -10px rgba(11, 77, 59, 0.15);
+    }
+
+    h2 {
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 700;
+      font-size: 20px;
+      color: var(--primary);
+      margin: 44px 0 12px;
+      padding-top: 20px;
+      border-top: 1px solid var(--rule);
+      letter-spacing: -0.01em;
+    }
+
+    h2:first-of-type { border-top: none; padding-top: 0; margin-top: 8px; }
+
+    h3 {
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 600;
+      font-size: 16px;
+      color: var(--primary);
+      margin: 26px 0 8px;
+    }
+
+    ul, ol { padding-left: 22px; margin: 12px 0; }
+    li { margin-bottom: 6px; }
+
+    a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: var(--accent); }
+
+    .callout {
+      background: #F4F8F2;
+      border-left: 4px solid var(--secondary);
+      border-radius: 0 12px 12px 0;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+    .callout strong { color: var(--primary); }
+
+    .callout.warn {
+      background: #FFF6EE;
+      border-left-color: var(--accent);
+    }
+
+    .callout.danger {
+      background: #FDF0EF;
+      border-left-color: var(--danger);
+    }
+    .callout.danger strong { color: var(--danger); }
+
+    /* Two routes to deletion, presented as equal-weight cards. */
+    .routes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 24px 0 8px;
+    }
+    @media (max-width: 640px) { .routes { grid-template-columns: 1fr; } }
+
+    .route {
+      border: 1px solid var(--rule);
+      border-radius: 16px;
+      padding: 22px 24px;
+      background: #fff;
+    }
+    .route.primary {
+      border-color: var(--secondary);
+      background: #F4F8F2;
+    }
+    .route h3 { margin-top: 0; }
+    .route .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+    }
+    .route.primary .tag { background: var(--secondary); color: #10331F; }
+    .route.secondary .tag { background: #EDEFEE; color: var(--muted); }
+    .route ol { margin: 10px 0 0; font-size: 15px; }
+
+    /* Deletion outcome table */
+    table.outcome {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0;
+      font-size: 15px;
+    }
+    table.outcome th, table.outcome td {
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--rule);
+      vertical-align: top;
+    }
+    table.outcome th {
+      background: #F4F8F2;
+      color: var(--primary);
+      font-family: 'Montserrat', sans-serif;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    table.outcome td:first-child { font-weight: 600; width: 34%; }
+    @media (max-width: 560px) {
+      table.outcome, table.outcome tbody, table.outcome tr, table.outcome td { display: block; width: 100%; }
+      table.outcome thead { display: none; }
+      table.outcome tr { border-bottom: 1px solid var(--rule); padding: 8px 0; }
+      table.outcome td { border: none; padding: 4px 0; }
+      table.outcome td:first-child { width: auto; color: var(--primary); }
+    }
+
+    /* Request form */
+    form.request {
+      background: #F8FAF8;
+      border: 1px solid var(--rule);
+      border-radius: 16px;
+      padding: 26px clamp(18px, 4vw, 30px);
+      margin: 20px 0 8px;
+    }
+    .field { margin-bottom: 18px; }
+    .field label {
+      display: block;
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: var(--primary);
+    }
+    .field .hint {
+      display: block;
+      font-weight: 400;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .field input, .field textarea, .field select {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1px solid #CFD8D3;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 15px;
+      background: #fff;
+      color: var(--dark);
+    }
+    .field input:focus, .field textarea:focus, .field select:focus {
+      outline: 2px solid var(--secondary);
+      outline-offset: 1px;
+      border-color: var(--secondary);
+    }
+    .field textarea { min-height: 90px; resize: vertical; }
+
+    .confirm {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      font-size: 14px;
+      color: #33403A;
+      margin: 4px 0 20px;
+    }
+    .confirm input { width: 18px; height: 18px; margin-top: 3px; flex-shrink: 0; }
+
+    button.submit {
+      background: var(--danger);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 26px;
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      width: 100%;
+    }
+    button.submit:hover { background: #8E1D17; }
+    button.submit:disabled { background: #C9CFCB; cursor: not-allowed; }
+
+    .fallback {
+      font-size: 14px;
+      color: var(--muted);
+      margin-top: 14px;
+    }
+
+    .contact-card {
+      background: var(--primary);
+      color: #fff;
+      border-radius: 16px;
+      padding: 28px clamp(20px, 4vw, 32px);
+      margin-top: 20px;
+    }
+    .contact-card h3 { color: #fff; margin-top: 0; }
+    .contact-card a { color: var(--secondary); }
+    .contact-card address { font-style: normal; line-height: 1.8; }
+
+    footer.pagefoot {
+      text-align: center;
+      padding: 40px 24px 56px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    footer.pagefoot a { color: var(--primary); }
+  </style>
+</head>
+
+<body>
+  <header class="masthead">
+    <div class="wrap">
+      <a class="back" href="/">&larr; Back to HomeBites</a>
+      <h1>Delete Your Account</h1>
+      <p class="lede">
+        You can permanently delete your HomeBites account and the personal information
+        associated with it. This page explains exactly what is removed, what we are
+        required to keep, and how to make the request.
+      </p>
+      <span class="updated">Last updated: 9 August 2026</span>
+    </div>
+  </header>
+
+  <main>
+    <h2>Two ways to delete your account</h2>
+
+    <div class="routes">
+      <div class="route primary">
+        <span class="tag">Fastest &mdash; immediate</span>
+        <h3>Delete in the HomeBites app</h3>
+        <p style="font-size:15px;margin:0 0 4px;">
+          Deletion happens straight away, and you will see confirmation on screen.
+        </p>
+        <ol>
+          <li>Open the HomeBites app and sign in</li>
+          <li>Go to <strong>Profile &rarr; Settings</strong></li>
+          <li>Tap <strong>Delete Account</strong></li>
+          <li>Read the summary, then type <strong>DELETE PERMANENTLY</strong> to confirm</li>
+        </ol>
+      </div>
+
+      <div class="route secondary">
+        <span class="tag">No app needed</span>
+        <h3>Request deletion from this page</h3>
+        <p style="font-size:15px;margin:0 0 4px;">
+          Use this if you no longer have the app installed or cannot sign in.
+          We verify your identity against the account before deleting anything.
+        </p>
+        <ol>
+          <li>Complete the form below</li>
+          <li>We acknowledge your request within 48 hours</li>
+          <li>We may contact you to confirm you own the account</li>
+          <li>Deletion is completed within 7 days</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <strong>You cannot delete your account while an order is in progress.</strong>
+      If you have an order that is placed, being prepared, or out for delivery, deletion
+      is blocked until it is delivered or cancelled. This protects both you and the
+      delivery partner carrying your order.
+    </div>
+
+    <h2>What happens to your data</h2>
+
+    <p>
+      Deleting your account is permanent and cannot be undone. There is no recovery
+      period and no way to restore the account afterwards. If you sign up again later,
+      it will be an entirely new account with no history, saved addresses or balances.
+    </p>
+
+    <table class="outcome">
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>What happens</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Saved delivery addresses</td>
+          <td>Deleted permanently.</td>
+        </tr>
+        <tr>
+          <td>Favourites and saved items</td>
+          <td>Deleted permanently.</td>
+        </tr>
+        <tr>
+          <td>Shopping cart</td>
+          <td>Deleted permanently.</td>
+        </tr>
+        <tr>
+          <td>Your profile</td>
+          <td>Name, email address, mobile number, profile photo and notification
+            token are deleted. The profile record itself remains only as an empty
+            marker so that past order records stay valid.</td>
+        </tr>
+        <tr>
+          <td>Sign-in credentials</td>
+          <td>Deleted permanently. You will no longer be able to log in by any method,
+            including Google sign-in and mobile OTP.</td>
+        </tr>
+        <tr>
+          <td>Active subscriptions</td>
+          <td>Cancelled immediately. No further meals are delivered and no further
+            renewal payments are taken.</td>
+        </tr>
+        <tr>
+          <td>Wallet, cashback and pending balances</td>
+          <td><strong>Forfeited.</strong> Any remaining balance is set to zero and is
+            not refundable. Withdraw or spend your balance before deleting.</td>
+        </tr>
+        <tr>
+          <td>Past order history</td>
+          <td>Anonymised, not deleted. Your name, phone number, email address and
+            delivery address are stripped from every past order. What remains is an
+            unidentifiable transaction record.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout danger">
+      <strong>Your wallet balance is not refunded.</strong>
+      Deleting your account forfeits any money remaining in your HomeBites wallet,
+      including cashback and pending amounts. If you have a balance you want to use,
+      spend it before you request deletion.
+    </div>
+
+    <h3>Why some records are kept</h3>
+    <p>
+      We keep an anonymised record of completed orders because we are required to
+      retain transaction and financial records for the applicable statutory periods
+      under Indian tax and accounting law, and because those records may be needed for
+      fraud prevention, dispute resolution or legal compliance. These records no longer
+      identify you: the customer name is replaced with &ldquo;Deleted user&rdquo;, and the
+      contact details, delivery address and location coordinates are removed entirely.
+    </p>
+    <p>
+      We also keep a minimal audit entry recording that a deletion took place and when.
+      This entry stores a one-way cryptographic hash of your mobile number rather than
+      the number itself &mdash; enough to demonstrate that we honoured your request,
+      without retaining the identifier the deletion was meant to remove.
+    </p>
+    <p>
+      For full details of how we handle information, see our
+      <a href="/privacy-policy.html">Privacy Policy</a>.
+    </p>
+
+    <h2 id="request">Request account deletion</h2>
+
+    <p>
+      Complete the form below. It will open your email application with the details
+      filled in &mdash; you still need to press send. We only use this information to
+      locate and verify your account.
+    </p>
+
+    <form class="request" id="deletionForm">
+      <div class="field">
+        <label for="fullName">Full name on the account</label>
+        <input type="text" id="fullName" name="fullName" required autocomplete="name" />
+      </div>
+
+      <div class="field">
+        <label for="mobile">Registered mobile number</label>
+        <span class="hint">The 10-digit number you use to sign in to HomeBites.</span>
+        <input type="tel" id="mobile" name="mobile" required inputmode="numeric"
+          pattern="[0-9+ ]{10,15}" autocomplete="tel" placeholder="9876543210" />
+      </div>
+
+      <div class="field">
+        <label for="email">Email address on the account</label>
+        <span class="hint">If you signed up with Google, use that address. Leave blank if you never added one.</span>
+        <input type="email" id="email" name="email" autocomplete="email" />
+      </div>
+
+      <div class="field">
+        <label for="scope">What would you like deleted?</label>
+        <select id="scope" name="scope">
+          <option value="Entire account and all associated personal data">
+            My entire account and all associated personal data
+          </option>
+          <option value="Personal data only, keep the account open">
+            Only my personal data &mdash; keep the account open
+          </option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="reason">Reason for leaving <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
+        <textarea id="reason" name="reason"
+          placeholder="This helps us improve. It is not required and does not affect your request."></textarea>
+      </div>
+
+      <label class="confirm">
+        <input type="checkbox" id="ack" required />
+        <span>
+          I understand that deleting my account is permanent, that any remaining wallet,
+          cashback or pending balance will be forfeited and not refunded, and that active
+          subscriptions will be cancelled.
+        </span>
+      </label>
+
+      <button type="submit" class="submit" id="submitBtn">Send deletion request</button>
+
+      <p class="fallback">
+        If the button does not open your email application, send your request directly to
+        <a href="mailto:homebites067@gmail.com">homebites067@gmail.com</a> with the subject
+        line &ldquo;Account deletion request&rdquo;, including your registered mobile number.
+      </p>
+    </form>
+
+    <h2>How long it takes</h2>
+    <ul>
+      <li><strong>In-app deletion</strong> &mdash; immediate.</li>
+      <li><strong>Acknowledgement of a request from this page</strong> &mdash; within 48 hours.</li>
+      <li><strong>Completion of a request from this page</strong> &mdash; within 7 days of us
+        verifying that you own the account, and in every case within 30 days of the request.</li>
+      <li><strong>Anonymised transaction records</strong> &mdash; retained for the applicable
+        statutory period, then deleted or securely disposed of.</li>
+      <li><strong>Backups</strong> &mdash; deleted data may persist in encrypted backups for a
+        short period before those backups are rotated out. It is not restored to live systems.</li>
+    </ul>
+
+    <h2>Questions</h2>
+    <div class="contact-card">
+      <h3>Contact HomeBites</h3>
+      <address>
+        Email: <a href="mailto:homebites067@gmail.com">homebites067@gmail.com</a><br />
+        Subject line: Account deletion request
+      </address>
+      <p style="margin-bottom:0;font-size:15px;">
+        If you are having trouble deleting your account, contact us and we will complete
+        the request on your behalf once we have verified that the account is yours.
+      </p>
+    </div>
+  </main>
+
+  <footer class="pagefoot">
+    <p>
+      &copy; 2026 HomeBites &middot;
+      <a href="/">Home</a> &middot;
+      <a href="/privacy-policy.html">Privacy Policy</a>
+    </p>
+  </footer>
+
+  <script>
+    // Composes a mailto: message from the form. No network request is made and
+    // nothing is stored by this page.
+    //
+    // A public endpoint that accepted deletion requests without authentication
+    // would let anyone submit somebody else's phone number, so verification is
+    // deliberately a human step performed against the account.
+    (function () {
+      var form = document.getElementById('deletionForm');
+      if (!form) return;
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+
+        var value = function (id) {
+          var el = document.getElementById(id);
+          return el && el.value ? el.value.trim() : '';
+        };
+
+        var name = value('fullName');
+        var mobile = value('mobile');
+        var email = value('email');
+        var scope = value('scope');
+        var reason = value('reason');
+
+        var lines = [
+          'I request deletion of my HomeBites account.',
+          '',
+          'Full name: ' + name,
+          'Registered mobile: ' + mobile,
+          'Email on account: ' + (email || 'Not provided'),
+          'Scope: ' + scope,
+          'Reason: ' + (reason || 'Not provided'),
+          '',
+          'I confirm that I understand this is permanent, that any remaining wallet,',
+          'cashback or pending balance will be forfeited and not refunded, and that',
+          'active subscriptions will be cancelled.',
+          '',
+          'Submitted from hombites.com/delete-account'
+        ];
+
+        var href = 'mailto:homebites067@gmail.com'
+          + '?subject=' + encodeURIComponent('Account deletion request - ' + mobile)
+          + '&body=' + encodeURIComponent(lines.join('\n'));
+
+        window.location.href = href;
+
+        var btn = document.getElementById('submitBtn');
+        if (btn) {
+          btn.textContent = 'Opening your email app…';
+          // Re-enabled shortly afterwards: if no mail client is configured the
+          // navigation silently does nothing, and a permanently dead button
+          // would leave the user with no way to retry.
+          setTimeout(function () {
+            btn.textContent = 'Send deletion request';
+          }, 4000);
+        }
+      });
+    })();
+  </script>
+</body>
+
+</html>

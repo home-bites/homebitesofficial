@@ -27,6 +27,7 @@ const Navbar = () => {
     { name: 'About', href: '#about' },
     { name: 'Contact', href: '#contact' },
     { name: 'Privacy', href: '/privacy-policy.html' },
+    { name: 'Delete Account', href: '/delete-account' },
   ];
 
   return (

@@ -8,6 +8,9 @@ const Footer = () => {
     { name: 'About', href: '#about' },
     { name: 'Contact', href: '#contact' },
     { name: 'Privacy Policy', href: '/privacy-policy.html' },
+    // Google Play requires the account-deletion route to be reachable from the
+    // site without signing in or installing the app.
+    { name: 'Delete Account', href: '/delete-account' },
   ];
 
   // Social Icons using simple crisp SVG shapes
@@ -128,6 +131,7 @@ const Footer = () => {
           </p>
           <div className="flex gap-6 text-xs text-brand-offwhite/40 font-sans">
             <a href="/privacy-policy.html" className="hover:text-white transition-colors">Privacy Policy</a>
+            <a href="/delete-account" className="hover:text-white transition-colors">Delete Account</a>
             <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
           </div>
         </div>
