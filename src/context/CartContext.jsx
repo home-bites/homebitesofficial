@@ -6,7 +6,14 @@ import { normaliseCoupon } from '../lib/validate';
 const CartContext = createContext(null);
 export const useCart = () => useContext(CartContext);
 
-const DELIVERY_FEE = Number(import.meta.env.VITE_DELIVERY_FEE ?? 30);
+/**
+ * Flat fee on every order. Shown to the customer as "Platform fee".
+ *
+ * The 10 here is the fallback for a build where VITE_DELIVERY_FEE wasn't
+ * set — it must match the .env value, or a misconfigured deploy quietly
+ * charges a different amount than the one you agreed.
+ */
+const DELIVERY_FEE = Number(import.meta.env.VITE_DELIVERY_FEE ?? 10);
 const STORAGE_KEY = 'homebites.cart.v1';
 
 export function CartProvider({ children }) {

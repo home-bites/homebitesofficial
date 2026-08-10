@@ -834,7 +834,7 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
                       </div>
                     )}
                     <div className="flex justify-between py-1 font-sans text-sm">
-                      <span className="text-brand-dark/60">Delivery</span>
+                      <span className="text-brand-dark/60">Platform fee</span>
                       <span>{totals.delivery === 0 ? 'Free' : inr(totals.delivery)}</span>
                     </div>
                     <div className="mt-3 flex justify-between border-t border-brand-primary/10 pt-3 font-display text-lg font-bold text-brand-dark">
