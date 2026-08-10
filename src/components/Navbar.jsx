@@ -62,6 +62,40 @@ const Navbar = ({ onTrackOrder }) => {
     { name: 'Privacy', href: '/privacy-policy.html' },
   ];
 
+  /**
+   * Scroll to a section, allowing for the fixed header.
+   *
+   * The browser's own anchor jump was unreliable on mobile. Tapping a link
+   * closed the menu, and the menu closes with a height animation — so the
+   * document shrank by a couple of hundred pixels while the browser was
+   * still scrolling to the target. The scroll landed somewhere else, or was
+   * abandoned, and it read as "the link does nothing".
+   *
+   * Doing it by hand also fixes the quieter half of the bug: a native anchor
+   * jump puts the section's top edge at y=0, which is underneath the fixed
+   * navbar, so the heading was hidden even when the scroll did work.
+   *
+   * Non-hash links (the privacy policy) fall through to normal navigation.
+   */
+  const goToSection = (href) => (e) => {
+    if (!href.startsWith('#')) return;      // real page — let the browser go
+    const el = document.querySelector(href);
+    if (!el) return;                        // no such section; don't swallow
+
+    e.preventDefault();
+    setMobileMenuOpen(false);
+
+    // One frame after the menu starts closing, so the measurement below is
+    // taken against a layout that is no longer mid-collapse.
+    requestAnimationFrame(() => {
+      const header = 84;                    // fixed navbar height + breathing room
+      const top = el.getBoundingClientRect().top + window.scrollY - header;
+      window.scrollTo({ top, behavior: 'smooth' });
+      // Keeps the URL shareable without triggering a second, competing jump.
+      history.replaceState(null, '', href);
+    });
+  };
+
   return (
     <>
       <motion.nav
@@ -99,6 +133,7 @@ const Navbar = ({ onTrackOrder }) => {
                 <a
                   key={link.name}
                   href={link.href}
+                  onClick={goToSection(link.href)}
                   className="font-sans font-bold text-lg md:text-xl lg:text-2xl text-white hover:text-brand-secondary transition-colors duration-300"
                 >
                   {link.name}
@@ -213,7 +248,7 @@ const Navbar = ({ onTrackOrder }) => {
                 <a
                   key={link.name}
                   href={link.href}
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={goToSection(link.href)}
                   className="font-sans font-bold text-xl text-white hover:text-brand-secondary transition-colors"
                 >
                   {link.name}
