@@ -342,7 +342,20 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
       return;
     }
     if (!items.length) { setFatal('Your bag is empty.'); return; }
-    if (!RAZORPAY_KEY_ID) { setFatal('Online payment isn\'t configured yet. Please contact us to order.'); return; }
+
+    // Only the online route needs a gateway key.
+    //
+    // This used to be an unconditional `if (!RAZORPAY_KEY_ID) return`, which
+    // ran before the COD branch below and refused every cash order with
+    // "Online payment isn't configured yet" — a message about a payment
+    // method the customer hadn't chosen, on a checkout that couldn't be
+    // completed at all. It made the site look broken while the kitchen was
+    // waiting for orders.
+    if (payMethod !== 'COD' && !ONLINE_ENABLED) {
+      setFatal('Online payment isn\'t available right now. Please choose cash on delivery.');
+      return;
+    }
+
     if (!db || !functions || !user) { setFatal('Please sign in again.'); return; }
 
     setBusy(true);
