@@ -1,16 +1,20 @@
 import React from 'react';
+import { LifeBuoy } from 'lucide-react';
 import logo from '../assets/logo.webp';
 import Container from '../common/Container';
 
-const Footer = () => {
+// Same source of truth as the Help Centre, overridable from .env.
+const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@hombites.com';
+const SUPPORT_PHONE = String(import.meta.env.VITE_SUPPORT_PHONE || '8184877798')
+  .replace(/\D/g, '').slice(-10);
+
+const Footer = ({ onOpenHelp }) => {
   const quickLinks = [
     { name: 'Home', href: '#home' },
+    { name: 'Menu', href: '#menu' },
     { name: 'About', href: '#about' },
     { name: 'Contact', href: '#contact' },
     { name: 'Privacy Policy', href: '/privacy-policy.html' },
-    // Google Play requires the account-deletion route to be reachable from the
-    // site without signing in or installing the app.
-    { name: 'Delete Account', href: '/delete-account' },
   ];
 
   // Social Icons using simple crisp SVG shapes
@@ -77,9 +81,27 @@ const Footer = () => {
             <p className="text-xs md:text-sm text-brand-offwhite/60 leading-relaxed font-sans max-w-sm mb-6">
               HomeBites is your premier platform for delicious meals cooked from the best local kitchens and delivered directly to your doorstep.
             </p>
-            <p className="text-xs uppercase tracking-widest text-brand-secondary font-bold font-display">
+            <p className="text-xs uppercase tracking-widest text-brand-secondary font-bold font-display mb-6">
               Food for Every Lifestyle
             </p>
+
+            {/* Contact. Kept as real tel:/mailto: links so a phone dials and a
+                desktop opens the mail client — a customer chasing an order
+                shouldn't have to copy digits by hand. */}
+            <div className="flex flex-col items-start gap-2 font-sans">
+              <a
+                href={`tel:+91${SUPPORT_PHONE}`}
+                className="text-xs md:text-sm text-brand-offwhite/70 hover:text-brand-secondary transition-colors"
+              >
+                +91 {SUPPORT_PHONE.slice(0, 5)} {SUPPORT_PHONE.slice(5)}
+              </a>
+              <a
+                href={`mailto:${SUPPORT_EMAIL}`}
+                className="text-xs md:text-sm text-brand-offwhite/70 hover:text-brand-secondary transition-colors"
+              >
+                {SUPPORT_EMAIL}
+              </a>
+            </div>
           </div>
 
           {/* Middle Column: Quick Links */}
@@ -87,7 +109,7 @@ const Footer = () => {
             <h4 className="font-display font-bold text-sm tracking-wider uppercase text-white mb-4">
               Company
             </h4>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col items-start gap-3">
               {quickLinks.map((link) => (
                 <a
                   key={link.name}
@@ -97,6 +119,23 @@ const Footer = () => {
                   {link.name}
                 </a>
               ))}
+
+              {/* Account deletion moved out of the navbar and lives inside the
+                  Help Centre. Google Play requires the deletion route to be
+                  reachable from the site without installing the app — it is,
+                  it's just one deliberate tap deeper than a nav link. */}
+              <button
+                onClick={onOpenHelp}
+                className="mt-1 inline-flex items-center gap-2 rounded-lg border border-brand-secondary/40
+                           bg-brand-secondary/10 px-3 py-2 text-xs md:text-sm font-bold text-brand-secondary
+                           transition-colors hover:bg-brand-secondary hover:text-brand-primary font-sans"
+              >
+                <LifeBuoy className="h-4 w-4" />
+                Help Centre
+              </button>
+              <span className="text-[10px] text-brand-offwhite/35 font-sans leading-relaxed max-w-[14rem]">
+                Support, order queries and account deletion
+              </span>
             </div>
           </div>
 
@@ -129,9 +168,9 @@ const Footer = () => {
           <p className="text-xs text-brand-offwhite/40 font-sans">
             © 2026 HomeBites. All rights reserved.
           </p>
-          <div className="flex gap-6 text-xs text-brand-offwhite/40 font-sans">
+          <div className="flex flex-wrap justify-center gap-6 text-xs text-brand-offwhite/40 font-sans">
             <a href="/privacy-policy.html" className="hover:text-white transition-colors">Privacy Policy</a>
-            <a href="/delete-account" className="hover:text-white transition-colors">Delete Account</a>
+            <button onClick={onOpenHelp} className="hover:text-white transition-colors">Help &amp; Account Deletion</button>
             <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
           </div>
         </div>

@@ -57,6 +57,11 @@
   <meta name="twitter:image" content="https://www.hombites.com/favicon1.png" />
 
   <!-- Mobile Web App -->
+  <!-- Both are needed. `mobile-web-app-capable` is the standard Chrome now
+       warns about the absence of; `apple-mobile-web-app-capable` is still the
+       only one iOS Safari reads, so dropping it would break standalone mode
+       on iPhone to silence a console message. -->
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="HomeBites" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />

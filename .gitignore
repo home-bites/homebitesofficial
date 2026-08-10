@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Local environment. Firebase web keys are public by design, but this file
+# also holds the Razorpay Key ID and delivery-area settings that differ
+# between machines and environments — it should never be committed.
+# .env.example is the committed template.
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
