@@ -31,7 +31,7 @@ const config = {
 export const isConfigured = Boolean(config.apiKey && config.projectId && config.appId);
 
 /** Razorpay Key ID (public). The SECRET lives only in the Cloud Function. */
-export const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || '';
+export const RAZORPAY_KEY_ID = 'rzp_live_TOM7yDxKTYGqQG';
 
 let app = null;
 if (isConfigured) {
