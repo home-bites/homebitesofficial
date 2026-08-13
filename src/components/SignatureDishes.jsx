@@ -207,7 +207,7 @@ export default function SignatureDishes() {
           else if (dPct > 0 && dPct < 100) price = base - (base * dPct) / 100;
 
           const outOfStock =
-            x.outOfStock === true ||
+            (x.isAvailable !== undefined ? !x.isAvailable : x.outOfStock === true) ||
             (x.trackInventory === true && (Number(x.stockQuantity) || 0) <= 0);
 
           return {
