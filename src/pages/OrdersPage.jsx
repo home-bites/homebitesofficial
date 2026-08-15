@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { ReceiptText, Navigation, Clock, AlertCircle, Phone, Bike } from 'lucide-react';
+import { ReceiptText, AlertCircle, Phone, Bike, ChevronDown, Check } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useOrderTracking, haversineKm, etaMinutes } from '../lib/useOrderTracking';
@@ -12,15 +12,22 @@ import { inr } from '../lib/format';
 /**
  * Order history and live tracking.
  *
- * Reads `orders` filtered by customerId — the same query the existing
- * OrderTracking modal uses, and one the rules can prove safe. Rider position
- * comes from `orderTracking` via useOrderTracking, which is the collection the
- * delivery partner app writes and the customer app already reads. Nothing here
- * invents a position or animates a marker along a guessed path.
+ * The previous version gave every order the same card, so a delivery arriving
+ * in four minutes sat at exactly the weight of a curry eaten last March. That
+ * is backwards: somebody opening this page almost always wants the live one,
+ * and everything else is reference material.
+ *
+ * So the live order now gets a dark full-width panel with the rider, the map
+ * and the timeline open by default, and finished orders collapse to a single
+ * quiet row that expands on tap. One thing is obviously the subject of the
+ * page, and the rest waits its turn.
+ *
+ * Data and behaviour are unchanged: `orders` filtered by customerId, rider
+ * position from the `orderTracking` collection the delivery app writes, and
+ * the same route/ETA handling. Nothing here invents a position.
  */
 
 const STAGES = ['Pending', 'Accepted', 'Preparing', 'Ready', 'Out for Delivery', 'Delivered'];
-
 const FINISHED = ['Delivered', 'Cancelled', 'Rejected'];
 
 /** Tolerates the spelling variations different clients write. */
@@ -31,36 +38,54 @@ function normalise(status) {
   return hit || String(status || 'Pending');
 }
 
-const badgeClass = (status) => {
-  switch (normalise(status)) {
-    case 'Delivered': return 'bg-brand-secondary/20 text-brand-primary';
-    case 'Cancelled':
-    case 'Rejected': return 'bg-red-100 text-red-700';
-    case 'Out for Delivery': return 'bg-brand-accent/15 text-brand-accent';
-    default: return 'bg-brand-primary/10 text-brand-primary';
-  }
+const STAGE_COPY = {
+  Pending: 'Waiting for the kitchen to accept',
+  Accepted: 'The kitchen has your order',
+  Preparing: 'Your food is being cooked',
+  Ready: 'Packed and waiting for a rider',
+  'Out for Delivery': 'On the way to you',
+  Delivered: 'Delivered',
 };
 
+/* ------------------------------------------------------------------ */
+/* Live order                                                          */
+/* ------------------------------------------------------------------ */
+
+/** Vertical timeline. Reads as progress rather than six identical bars. */
 function Timeline({ status }) {
   const current = STAGES.indexOf(normalise(status));
-  if (['Cancelled', 'Rejected'].includes(normalise(status))) {
-    return (
-      <p className="rounded-lg bg-red-50 px-3 py-2 font-sans text-xs font-semibold text-red-700">
-        This order was {normalise(status).toLowerCase()}.
-      </p>
-    );
-  }
+  if (['Cancelled', 'Rejected'].includes(normalise(status))) return null;
+
   return (
-    <ol className="flex gap-1">
-      {STAGES.map((s, i) => (
-        <li key={s} className="flex-1">
-          <div className={`h-1.5 rounded-full ${i <= current ? 'bg-brand-primary' : 'bg-brand-primary/12'}`} />
-          <p className={`mt-1 font-sans text-[9px] leading-tight ${
-            i <= current ? 'font-bold text-brand-primary' : 'text-brand-dark/30'}`}>
-            {s}
-          </p>
-        </li>
-      ))}
+    <ol className="space-y-0">
+      {STAGES.map((s, i) => {
+        const done = i < current;
+        const now = i === current;
+        return (
+          <li key={s} className="flex gap-3">
+            <div className="flex flex-col items-center">
+              <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full transition-colors ${
+                done ? 'bg-brand-secondary'
+                     : now ? 'bg-brand-secondary ring-4 ring-brand-secondary/25'
+                           : 'bg-white/15'}`}>
+                {done && <Check className="h-3 w-3 text-brand-primary" strokeWidth={3.5} />}
+              </span>
+              {i < STAGES.length - 1 && (
+                <span className={`w-[2px] flex-1 ${done ? 'bg-brand-secondary' : 'bg-white/15'}`} />
+              )}
+            </div>
+            <div className={`pb-4 ${i === STAGES.length - 1 ? 'pb-0' : ''}`}>
+              <p className={`font-sans text-[13px] leading-5 ${
+                now ? 'font-bold text-white' : done ? 'text-white/70' : 'text-white/30'}`}>
+                {s}
+              </p>
+              {now && (
+                <p className="font-sans text-[11px] text-brand-secondary">{STAGE_COPY[s]}</p>
+              )}
+            </div>
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -70,97 +95,80 @@ function TrackPanel({ order }) {
   const finished = FINISHED.includes(status);
 
   // A rider is assigned before the food leaves the kitchen, and they are often
-  // already riding to collect it. Gating purely on "Out for Delivery" meant a
-  // customer watching a Preparing order saw nothing at all — no rider, no map,
-  // no explanation — even when a partner had been assigned and was reporting
-  // their position.
-  //
-  // The partner id comes from the order document first: `assignedPartnerId` is
-  // set at assignment, whereas orderTracking only appears once the rider's app
-  // starts reporting. Waiting for the tracking document meant the rider's name
-  // and phone stayed hidden during the window a customer is most likely to
-  // want them.
+  // already riding to collect it. `assignedPartnerId` is set at assignment,
+  // whereas orderTracking only appears once the rider's app starts reporting —
+  // so the name and phone come from the order, not the tracking document.
   const partnerId = order.assignedPartnerId || '';
-  const assigned = Boolean(partnerId);
-
-  // Show from Ready onwards, or as soon as anyone is assigned.
-  const trackable = !finished && (assigned || status === 'Ready' || status === 'Out for Delivery');
+  const trackable = !finished
+    && (Boolean(partnerId) || status === 'Ready' || status === 'Out for Delivery');
 
   const { tracking, state } = useOrderTracking(order.id, trackable);
   const rider = useRider(partnerId || tracking?.partnerId, trackable);
 
-  // Set by LiveTrackMap once Directions answers. Null means no road route was
-  // available, which switches the figures below back to straight-line.
   const [route, setRoute] = useState(null);
   const handleRoute = useCallback((r) => setRoute(r), []);
 
   const destLat = Number(order.deliveryAddress?.latitude ?? order.deliveryAddress?.lat);
   const destLng = Number(order.deliveryAddress?.longitude ?? order.deliveryAddress?.lng);
-  const destination = Number.isFinite(destLat) && Number.isFinite(destLng) && !(destLat === 0 && destLng === 0)
+  const destination = Number.isFinite(destLat) && Number.isFinite(destLng)
+    && !(destLat === 0 && destLng === 0)
     ? { lat: destLat, lng: destLng }
     : null;
 
   if (!trackable) return null;
 
-  // Prefer the real road route. Straight-line is the fallback for when
-  // Directions is unavailable, and the wording below changes with it so the
-  // customer is never shown an approximation labelled as a road distance.
+  // Prefer the real road route; straight-line is the labelled fallback.
   const straightKm = tracking && destination ? haversineKm(tracking, destination) : null;
   const usingRoute = Boolean(route);
   const distanceLabel = usingRoute
     ? route.distanceText
-    : straightKm == null
-      ? null
-      : straightKm < 1
-        ? `${Math.round(straightKm * 1000)} m`
-        : `${straightKm.toFixed(1)} km`;
+    : straightKm == null ? null
+      : straightKm < 1 ? `${Math.round(straightKm * 1000)} m` : `${straightKm.toFixed(1)} km`;
   const etaLabel = usingRoute
     ? route.durationText
-    : etaMinutes(straightKm) != null
-      ? `approx. ${etaMinutes(straightKm)} min`
-      : null;
+    : etaMinutes(straightKm) != null ? `approx. ${etaMinutes(straightKm)} min` : null;
 
   return (
-    <div className="mt-3 border-t border-brand-primary/8 pt-3">
-      <div className="mb-2 flex flex-wrap items-center gap-3">
-        <span className="flex items-center gap-1.5 font-sans text-xs font-bold text-brand-accent">
-          <Navigation className="h-3.5 w-3.5" />
-          {status === 'Out for Delivery' ? 'On the way' : 'Rider assigned'}
-        </span>
-        {distanceLabel && (
-          <span className="font-sans text-xs text-brand-dark/55">
-            {usingRoute ? '' : '~'}{distanceLabel} away
-          </span>
-        )}
-        {etaLabel && (
-          <span className="flex items-center gap-1 font-sans text-xs text-brand-dark/55">
-            <Clock className="h-3.5 w-3.5" /> {etaLabel}
-            {route?.trafficAware && (
-              <span className="text-brand-accent" title="Includes current traffic">
-                &nbsp;· live traffic
-              </span>
-            )}
-          </span>
-        )}
-      </div>
+    <div className="mt-5 border-t border-white/10 pt-5">
+      {/* ETA is the single number people want. Given the size to match. */}
+      {etaLabel && (
+        <div className="mb-4 flex items-end gap-2.5">
+          <div>
+            <p className="font-sans text-[10px] font-bold uppercase tracking-[0.16em] text-white/40">
+              {status === 'Out for Delivery' ? 'Arriving in' : 'Estimated'}
+            </p>
+            <p className="font-display text-3xl font-bold leading-none text-brand-secondary">
+              {etaLabel.replace('approx. ', '')}
+            </p>
+          </div>
+          {distanceLabel && (
+            <p className="pb-1 font-sans text-xs text-white/45">
+              · {usingRoute ? '' : '~'}{distanceLabel} away
+            </p>
+          )}
+          {route?.trafficAware && (
+            <span className="mb-1 rounded-full bg-brand-secondary/15 px-2 py-0.5 font-sans text-[10px] font-bold text-brand-secondary">
+              live traffic
+            </span>
+          )}
+        </div>
+      )}
 
-      {/* Rider card. Name, phone and vehicle only — see useRider for why the
-          rest of the partner document is deliberately not read. */}
       {rider && (
-        <div className="mb-2 flex items-center gap-3 rounded-xl border border-brand-primary/10 bg-brand-offwhite px-3 py-2">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-primary/10">
-            <Bike className="h-4 w-4 text-brand-primary" />
+        <div className="mb-4 flex items-center gap-3 rounded-2xl bg-white/8 p-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-secondary/15">
+            <Bike className="h-5 w-5 text-brand-secondary" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate font-sans text-xs font-bold text-brand-dark">{rider.name}</p>
-            {rider.vehicleNumber && (
-              <p className="truncate font-sans text-[11px] text-brand-dark/45">{rider.vehicleNumber}</p>
-            )}
+            <p className="truncate font-display text-sm font-bold text-white">{rider.name}</p>
+            <p className="truncate font-sans text-[11px] text-white/45">
+              {rider.vehicleNumber || 'Your delivery partner'}
+            </p>
           </div>
           {rider.phone && (
             <a href={`tel:${rider.phone}`}
-               className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-primary px-3 py-1.5 font-sans text-[11px] font-bold text-white">
-              <Phone className="h-3.5 w-3.5" /> Call
+               className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-secondary text-brand-primary transition-transform active:scale-90">
+              <Phone className="h-4 w-4" />
             </a>
           )}
         </div>
@@ -169,89 +177,68 @@ function TrackPanel({ order }) {
       {state === 'ready' && tracking ? (
         <>
           <LiveTrackMap rider={tracking} destination={destination}
-                        onRoute={handleRoute} className="h-64 w-full" />
-          <p className="mt-1.5 font-sans text-[10px] text-brand-dark/35">
+                        onRoute={handleRoute}
+                        className="h-56 w-full sm:h-72" />
+          <p className="mt-2 font-sans text-[10px] text-white/30">
             {usingRoute
-              ? 'Driving distance and time along the road route.'
-              : 'Road route unavailable — this is a straight-line estimate.'}
-            {tracking.updatedAt && ` Last update ${tracking.updatedAt.toLocaleTimeString()}.`}
+              ? 'Driving distance along the road route.'
+              : 'Road route unavailable — straight-line estimate.'}
+            {tracking.updatedAt && ` Updated ${tracking.updatedAt.toLocaleTimeString()}.`}
           </p>
         </>
       ) : state === 'error' ? (
-        <p className="rounded-lg bg-red-50 px-3 py-2 font-sans text-xs text-red-700">
-          We can't show the rider's location right now. Your order is still on its way.
+        <p className="rounded-2xl bg-white/8 px-4 py-3 font-sans text-xs text-white/60">
+          We can't show the rider's location right now — your order is still on its way.
         </p>
       ) : (
-        <p className="rounded-lg bg-brand-offwhite px-3 py-2 font-sans text-xs text-brand-dark/50">
+        <p className="rounded-2xl bg-white/8 px-4 py-3 font-sans text-xs text-white/60">
           {status === 'Out for Delivery'
             ? 'Waiting for your rider to start sharing their location…'
-            : 'The live map appears here once your rider is on the move.'}
+            : 'The live map appears here once your rider sets off.'}
         </p>
       )}
     </div>
   );
 }
 
-function OrderCard({ order }) {
+/** The order the customer is actually waiting for. */
+function LiveOrderCard({ order }) {
   const status = normalise(order.status);
-  const paid = String(order.paymentStatus || '').toLowerCase() === 'paid';
-  const isCod = String(order.paymentMethod || '').toUpperCase() === 'COD';
   const balanceDue = Number(order.balanceDue) || 0;
   const refundDue = Number(order.refundDue) || 0;
+  const count = (order.items || []).reduce((n, i) => n + (i.quantity ?? i.qty ?? 1), 0);
 
   return (
-    <article className="rounded-2xl border border-brand-primary/10 bg-white p-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
+    <article className="overflow-hidden rounded-[28px] bg-brand-primary p-5 text-white shadow-[0_20px_50px_-20px_rgba(11,77,59,0.6)] sm:p-6">
+      <div className="mb-5 flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="truncate font-display text-sm font-bold text-brand-dark">
+          <p className="font-sans text-[10px] font-bold uppercase tracking-[0.16em] text-brand-secondary">
+            {STAGE_COPY[status] || status}
+          </p>
+          <h2 className="mt-1 font-display text-xl font-bold tracking-tight">
+            {count} {count === 1 ? 'item' : 'items'} · {inr(order.grandTotal ?? order.totalAmount ?? 0)}
+          </h2>
+          <p className="mt-0.5 font-mono text-[11px] text-white/35">
             {order.orderId || order.id.slice(0, 8)}
           </p>
-          <p className="font-sans text-[11px] text-brand-dark/40">
-            {order.createdAt?.toDate?.().toLocaleString?.() || ''}
-          </p>
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="font-display text-sm font-bold text-brand-primary">
-            {inr(order.grandTotal ?? order.totalAmount ?? 0)}
-          </p>
-          <span className={`inline-block rounded-full px-2 py-0.5 font-sans text-[10px] font-bold uppercase tracking-wide ${badgeClass(order.status)}`}>
-            {status}
-          </span>
         </div>
       </div>
 
       {order.itemsEditedAt && (
-        <p className="mb-2 rounded-lg bg-brand-secondary/10 px-2.5 py-1.5 font-sans text-[11px] text-brand-primary">
+        <p className="mb-3 rounded-xl bg-brand-secondary/15 px-3 py-2 font-sans text-[11px] text-brand-secondary">
           Order updated{order.lastEditReason ? ` — ${order.lastEditReason}` : ''}.
         </p>
       )}
       {balanceDue > 0 && (
-        <p className="mb-2 rounded-lg bg-amber-50 px-2.5 py-1.5 font-sans text-[11px] font-bold text-amber-800">
+        <p className="mb-3 rounded-xl bg-amber-400/15 px-3 py-2 font-sans text-[11px] font-bold text-amber-200">
           Balance to pay: {inr(balanceDue)} — pay this to the rider.
         </p>
       )}
       {refundDue > 0 && (
-        <p className="mb-2 rounded-lg bg-emerald-50 px-2.5 py-1.5 font-sans text-[11px] font-bold text-emerald-800">
+        <p className="mb-3 rounded-xl bg-brand-secondary/15 px-3 py-2 font-sans text-[11px] font-bold text-brand-secondary">
           Refund due to you: {inr(refundDue)}.
         </p>
       )}
-
-      <ul className="mb-3 space-y-0.5">
-        {(order.items || []).map((it, i) => (
-          <li key={i} className="flex justify-between font-sans text-xs">
-            <span className="truncate text-brand-dark/65">
-              {it.quantity ?? it.qty ?? 1}× {it.name}
-            </span>
-            <span className="ml-3 shrink-0 text-brand-dark/45">
-              {inr((it.price || 0) * (it.quantity ?? it.qty ?? 1))}
-            </span>
-          </li>
-        ))}
-      </ul>
-
-      <p className="mb-3 font-sans text-[11px] text-brand-dark/40">
-        {paid ? 'Paid' : isCod ? 'Cash on delivery' : 'Payment pending'}
-      </p>
 
       <Timeline status={order.status} />
       <TrackPanel order={order} />
@@ -259,19 +246,89 @@ function OrderCard({ order }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Past orders                                                         */
+/* ------------------------------------------------------------------ */
+
+const pastTone = (status) =>
+  status === 'Delivered'
+    ? 'bg-brand-secondary/15 text-brand-primary'
+    : 'bg-red-50 text-red-600';
+
+/** Collapsed by default — history is reference, not the subject of the page. */
+function PastOrderRow({ order }) {
+  const [open, setOpen] = useState(false);
+  const status = normalise(order.status);
+  const count = (order.items || []).reduce((n, i) => n + (i.quantity ?? i.qty ?? 1), 0);
+  const when = order.createdAt?.toDate?.();
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-brand-primary/8 bg-white">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-3 p-4 text-left"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-display text-sm font-bold text-brand-dark">
+            {(order.items || []).slice(0, 2).map((i) => i.name).join(', ')}
+            {count > 2 && <span className="text-brand-dark/40"> +{count - 2} more</span>}
+          </p>
+          <p className="mt-0.5 font-sans text-[11px] text-brand-dark/40">
+            {when ? when.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+            {' · '}{order.orderId || order.id.slice(0, 8)}
+          </p>
+        </div>
+
+        <div className="shrink-0 text-right">
+          <p className="font-display text-sm font-bold text-brand-dark">
+            {inr(order.grandTotal ?? order.totalAmount ?? 0)}
+          </p>
+          <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 font-sans text-[10px] font-bold ${pastTone(status)}`}>
+            {status}
+          </span>
+        </div>
+
+        <ChevronDown className={`h-4 w-4 shrink-0 text-brand-dark/25 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="border-t border-brand-primary/8 bg-brand-offwhite/40 px-4 py-3">
+          <ul className="space-y-1.5">
+            {(order.items || []).map((it, i) => (
+              <li key={i} className="flex justify-between gap-3 font-sans text-xs">
+                <span className="truncate text-brand-dark/65">
+                  {it.quantity ?? it.qty ?? 1} × {it.name}
+                </span>
+                <span className="shrink-0 text-brand-dark/45">
+                  {inr((it.price || 0) * (it.quantity ?? it.qty ?? 1))}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 border-t border-brand-primary/8 pt-2 font-sans text-[11px] text-brand-dark/40">
+            {String(order.paymentStatus || '').toLowerCase() === 'paid'
+              ? 'Paid online'
+              : String(order.paymentMethod || '').toUpperCase() === 'COD'
+                ? 'Paid in cash'
+                : 'Payment pending'}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
 const PAGE_SIZE = 15;
 
 export default function OrdersPage() {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
-  const [state, setState] = useState('loading'); // loading | ready | error
+  const [state, setState] = useState('loading');
 
-  // Pagination by growing the listener's limit rather than by paging with a
-  // cursor. Orders change state constantly — a rider moves an order from Ready
-  // to Out for Delivery mid-scroll — and a cursor-paged list would hold stale
-  // snapshots for every page after the first. Growing one live query keeps
-  // every order on screen current, at the cost of re-reading what is already
-  // loaded when the customer asks for more.
+  // Growing one live query rather than cursor-paging: orders change state
+  // constantly, and cursor pages would hold stale snapshots after the first.
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [atEnd, setAtEnd] = useState(false);
 
@@ -287,7 +344,6 @@ export default function OrdersPage() {
       q,
       (snap) => {
         setOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        // Fewer documents than asked for means there is nothing further back.
         setAtEnd(snap.size < pageSize);
         setState('ready');
       },
@@ -302,57 +358,59 @@ export default function OrdersPage() {
   const past = orders.filter((o) => FINISHED.includes(normalise(o.status)));
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-5 sm:px-6">
-      <h1 className="mb-4 font-display text-xl font-bold text-brand-dark">Your orders</h1>
+    <div className="mx-auto max-w-3xl px-4 py-6 sm:px-8">
+      <h1 className="mb-6 font-display text-[28px] font-bold tracking-tight text-brand-dark">
+        Your orders
+      </h1>
 
       {state === 'loading' && (
-        <div className="space-y-3">
-          {[0, 1].map((i) => <div key={i} className="h-40 animate-pulse rounded-2xl bg-white/70" />)}
+        <div className="space-y-4">
+          <div className="h-64 animate-pulse rounded-[28px] bg-white/70" />
+          <div className="h-16 animate-pulse rounded-2xl bg-white/70" />
         </div>
       )}
 
       {state === 'error' && (
-        <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-4">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-          <div>
-            <p className="font-sans text-sm font-bold text-red-700">Couldn't load your orders</p>
-            <button onClick={() => window.location.reload()}
-                    className="mt-2 rounded-lg bg-red-600 px-3 py-1.5 font-sans text-xs font-bold text-white">
-              Try again
-            </button>
-          </div>
+        <div className="rounded-[28px] border border-red-200 bg-red-50 p-8 text-center">
+          <AlertCircle className="mx-auto mb-2 h-6 w-6 text-red-500" />
+          <p className="font-display text-base font-bold text-red-700">
+            Couldn't load your orders
+          </p>
+          <button onClick={() => window.location.reload()}
+                  className="mt-4 rounded-xl bg-red-600 px-5 py-2.5 font-sans text-sm font-bold text-white">
+            Try again
+          </button>
         </div>
       )}
 
       {state === 'ready' && orders.length === 0 && (
-        <div className="rounded-2xl border border-brand-primary/10 bg-white p-10 text-center">
-          <ReceiptText className="mx-auto mb-2 h-6 w-6 text-brand-dark/20" />
-          <p className="font-display text-sm font-bold text-brand-dark/70">No orders yet</p>
+        <div className="rounded-[28px] border border-brand-primary/8 bg-white p-14 text-center">
+          <ReceiptText className="mx-auto mb-3 h-7 w-7 text-brand-dark/15" />
+          <p className="font-display text-lg font-bold text-brand-dark/70">No orders yet</p>
+          <p className="mx-auto mt-2 max-w-xs font-sans text-sm leading-relaxed text-brand-dark/40">
+            When you order, you'll be able to watch it being cooked and track the
+            rider to your door.
+          </p>
           <Link to="/home"
-                className="mt-4 inline-block rounded-xl bg-brand-primary px-5 py-2.5 font-sans text-sm font-bold text-white">
+                className="mt-6 inline-block rounded-2xl bg-brand-primary px-6 py-3 font-display text-sm font-bold text-white">
             Browse the menu
           </Link>
         </div>
       )}
 
       {active.length > 0 && (
-        <section className="mb-6">
-          <h2 className="mb-2 font-sans text-xs font-bold uppercase tracking-wider text-brand-dark/45">
-            Active
-          </h2>
-          <div className="space-y-3">
-            {active.map((o) => <OrderCard key={o.id} order={o} />)}
-          </div>
+        <section className="mb-10 space-y-4">
+          {active.map((o) => <LiveOrderCard key={o.id} order={o} />)}
         </section>
       )}
 
       {past.length > 0 && (
         <section>
-          <h2 className="mb-2 font-sans text-xs font-bold uppercase tracking-wider text-brand-dark/45">
-            Past orders
+          <h2 className="mb-3 font-sans text-[11px] font-bold uppercase tracking-[0.16em] text-brand-dark/35">
+            Earlier
           </h2>
-          <div className="space-y-3">
-            {past.map((o) => <OrderCard key={o.id} order={o} />)}
+          <div className="space-y-2.5">
+            {past.map((o) => <PastOrderRow key={o.id} order={o} />)}
           </div>
         </section>
       )}
@@ -360,7 +418,7 @@ export default function OrdersPage() {
       {state === 'ready' && orders.length > 0 && !atEnd && (
         <button
           onClick={() => setPageSize((n) => n + PAGE_SIZE)}
-          className="mx-auto mt-5 block rounded-xl border border-brand-primary/20 px-5 py-2.5 font-sans text-sm font-bold text-brand-primary transition-colors hover:bg-brand-primary/5"
+          className="mx-auto mt-6 block rounded-2xl border border-brand-primary/15 px-6 py-3 font-sans text-sm font-bold text-brand-primary transition-colors hover:bg-brand-primary/5"
         >
           Load older orders
         </button>

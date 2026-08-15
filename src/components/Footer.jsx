@@ -8,6 +8,8 @@ const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@hombites.co
 const SUPPORT_PHONE = String(import.meta.env.VITE_SUPPORT_PHONE || '8184877798')
   .replace(/\D/g, '').slice(-10);
 
+import { clearConsent } from '../lib/consent';
+
 const Footer = ({ onOpenHelp }) => {
   const quickLinks = [
     { name: 'Home', href: '#home' },
@@ -172,6 +174,15 @@ const Footer = ({ onOpenHelp }) => {
             <a href="/privacy-policy.html" className="hover:text-white transition-colors">Privacy Policy</a>
             <button onClick={onOpenHelp} className="hover:text-white transition-colors">Help &amp; Account Deletion</button>
             <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
+            {/* Reopens the consent dialog. A choice a customer cannot revisit
+                is not really consent — clearConsent() removes the stored
+                record, and CookieConsent listens for that and shows itself. */}
+            <button
+              onClick={clearConsent}
+              className="hover:text-white transition-colors"
+            >
+              Cookie preferences
+            </button>
           </div>
         </div>
 

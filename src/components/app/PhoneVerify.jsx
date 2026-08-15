@@ -4,6 +4,7 @@ import { httpsCallable, getFunctions } from 'firebase/functions';
 import { Phone, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
 import { auth } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
+import { hasConsent } from '../../lib/consent';
 
 /**
  * Verifies a mobile number and **links it to the signed-in account**.
@@ -56,6 +57,17 @@ export default function PhoneVerify({ onDone }) {
     verifierRef.current = null;
   }, []);
 
+  /**
+   * Consent gate.
+   *
+   * reCAPTCHA is loaded from Google and sets its own cookies, so it belongs to
+   * the "Maps and verification" category the banner offers. Checked here rather
+   * than at render because this is the moment the script is actually injected —
+   * constructing RecaptchaVerifier is what loads it.
+   *
+   * The customer is told what to do rather than left with a dead button: they
+   * can reopen the banner from Cookie preferences below.
+   */
   const ensureVerifier = () => {
     if (verifierRef.current) return verifierRef.current;
     verifierRef.current = new RecaptchaVerifier(auth, recaptchaHolder.current, {
@@ -65,6 +77,15 @@ export default function PhoneVerify({ onDone }) {
   };
 
   const sendCode = async () => {
+    if (!hasConsent('functional')) {
+      setError(
+        'Verifying your number uses Google reCAPTCHA, which needs the '
+        + '"Maps and verification" cookie setting. Turn it on in Cookie '
+        + 'preferences and try again.',
+      );
+      return;
+    }
+
     const digits = phone.replace(/\D/g, '').slice(-10);
     if (!INDIAN_MOBILE.test(digits)) {
       setError('Enter a 10-digit mobile number starting 6, 7, 8 or 9.');

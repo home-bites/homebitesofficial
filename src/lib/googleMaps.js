@@ -15,6 +15,8 @@
  * coordinate box rather than dead-end the checkout.
  */
 
+import { hasConsent } from './consent';
+
 const KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || '';
 
 /** False when no key is configured, so callers can hide the map entirely. */
@@ -32,6 +34,14 @@ const CALLBACK = '__hbGoogleMapsReady';
 let pending = null;
 
 export function loadGoogleMaps() {
+  // The consent banner is not decoration: declining "Maps and verification"
+  // must actually stop Google's script loading, or the choice meant nothing.
+  // Callers already handle a false result by explaining rather than hanging.
+  if (!hasConsent('functional')) {
+    console.info('[maps] not loaded — no consent for functional cookies');
+    return Promise.resolve(false);
+  }
+
   if (typeof window === 'undefined') return Promise.resolve(false);
   if (!KEY) return Promise.resolve(false);
   if (window.google?.maps?.Map) return Promise.resolve(true);

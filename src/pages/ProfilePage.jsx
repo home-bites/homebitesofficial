@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore';
 import {
   User, MapPin, LogOut, Plus, Trash2, Check, Loader2, AlertCircle, Mail, Phone,
-  LifeBuoy, MessageCircle, Smartphone,
+  LifeBuoy, MessageCircle, Smartphone, Cookie,
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +14,7 @@ import MapPicker from '../components/MapPicker';
 import { checkCoordinates } from '../lib/serviceArea';
 import PhoneVerify from '../components/app/PhoneVerify';
 import { useAppSettings } from '../lib/useAppSettings';
+import { clearConsent } from '../lib/consent';
 
 /**
  * Profile, saved addresses and wallet.
@@ -406,6 +407,15 @@ export default function ProfilePage() {
           </p>
         )}
       </section>
+
+      {/* Signed-in customers never see the landing page footer, so the only
+          other way to revisit this choice would be to sign out. */}
+      <button
+        onClick={clearConsent}
+        className="mb-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-brand-primary/10 bg-white py-3 font-sans text-xs font-bold text-brand-dark/50 transition-colors hover:text-brand-primary"
+      >
+        <Cookie className="h-4 w-4" /> Cookie preferences
+      </button>
 
       {/* ---- apps coming soon ---- */}
       <section className="mb-5 flex items-start gap-3 rounded-2xl border border-brand-secondary/40 bg-brand-secondary/10 p-4">

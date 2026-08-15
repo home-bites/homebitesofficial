@@ -15,6 +15,7 @@ import OrderTracking from './components/OrderTracking';
 import HelpCenter from './components/HelpCenter';
 
 import ProtectedRoute from './routes/ProtectedRoute';
+import CookieConsent from './components/CookieConsent';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 
@@ -158,6 +159,9 @@ export default function App() {
             {/* Unknown paths go home rather than to a blank screen. */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          {/* Outside <Routes> so it shows on the landing page and inside the
+              app alike — consent is not a per-page concern. */}
+          <CookieConsent />
         </BrowserRouter>
       </CartProvider>
     </AuthProvider>
