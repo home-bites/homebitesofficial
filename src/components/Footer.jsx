@@ -89,8 +89,14 @@ const Footer = ({ onOpenHelp }) => {
 
             {/* Contact. Kept as real tel:/mailto: links so a phone dials and a
                 desktop opens the mail client — a customer chasing an order
-                shouldn't have to copy digits by hand. */}
-            <div className="flex flex-col items-start gap-2 font-sans">
+                shouldn't have to copy digits by hand.
+
+                This carries id="contact" because the navbar and the footer's
+                own quick links both point at #contact, and nothing on the page
+                had that id — so the link silently did nothing. goToSection()
+                bails when the target is missing rather than swallowing the
+                click, which is why it failed quietly instead of erroring. */}
+            <div id="contact" className="flex flex-col items-start gap-2 font-sans">
               <a
                 href={`tel:+91${SUPPORT_PHONE}`}
                 className="text-xs md:text-sm text-brand-offwhite/70 hover:text-brand-secondary transition-colors"
