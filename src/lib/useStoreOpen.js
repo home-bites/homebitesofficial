@@ -37,3 +37,46 @@ export function useStoreOpen() {
 
   return { storeOpen: open, closedMessage: message };
 }
+
+/**
+ * Feature switches from the dashboard's Settings → System tab.
+ *
+ * Same document as useStoreOpen, deliberately — the Firestore SDK shares one
+ * underlying watch per document, so a second hook here costs no extra listener
+ * and keeps each hook returning only what its callers actually use.
+ *
+ * Only `couponEnabled` matters on the website today: the site has no wallet
+ * and no loyalty programme, so gating those would be gating nothing. They are
+ * returned anyway so a future surface reads the flag instead of inventing a
+ * second source of truth.
+ *
+ * Fails open for the same reason as useStoreOpen — an unreachable settings
+ * document should not strip working features off a live storefront.
+ */
+export function useFeatureFlags() {
+  const [flags, setFlags] = useState({
+    couponEnabled: true,
+    walletEnabled: true,
+    loyaltyEnabled: true,
+  });
+
+  useEffect(() => {
+    if (!db) return undefined;
+    return onSnapshot(
+      doc(db, 'appSettings', 'general'),
+      (snap) => {
+        const d = snap.data() || {};
+        setFlags({
+          couponEnabled: d.couponEnabled !== false,
+          walletEnabled: d.walletEnabled !== false,
+          loyaltyEnabled: d.loyaltyEnabled !== false,
+        });
+      },
+      (e) => {
+        console.error('[settings] feature flag listener failed', e);
+      },
+    );
+  }, []);
+
+  return flags;
+}

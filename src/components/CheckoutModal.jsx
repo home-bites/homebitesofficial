@@ -22,7 +22,7 @@ import {
 import { useCart } from '../context/CartContext';
 import AuthPanel from './AuthPanel';
 import MapPicker from './MapPicker';
-import { useStoreOpen } from '../lib/useStoreOpen';
+import { useStoreOpen, useFeatureFlags } from '../lib/useStoreOpen';
 import { readCache, writeCache, TTL } from '../lib/localCache';
 import { MAPS_ENABLED } from '../lib/googleMaps';
 import { useAuth } from '../context/AuthContext';
@@ -68,6 +68,7 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
   const { items, totals, add, remove, clear, coupon, couponError, couponBusy, applyCoupon, removeCoupon } = useCart();
   const { user, profile, isSignedIn, updateProfile, authError } = useAuth();
   const { storeOpen, closedMessage } = useStoreOpen();
+  const { couponEnabled } = useFeatureFlags();
 
   // `address` is gone. Location comes from the device; `doorInfo` carries only
   // the part GPS can't know — flat number, floor, gate, landmark.
@@ -795,7 +796,11 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
                            value={trap} onChange={(e) => setTrap(e.target.value)}
                            tabIndex={-1} autoComplete="off" /></div>
 
-                  {/* coupon */}
+                  {/* coupon — hidden entirely when switched off in the
+                      dashboard, heading included, so the section closes up
+                      rather than leaving a "Coupon" label over blank space. */}
+                  {couponEnabled && (
+                  <>
                   <h3 className="mb-3 mt-6 font-display text-sm font-bold uppercase tracking-wider text-brand-dark/70">
                     Coupon
                   </h3>
@@ -835,6 +840,8 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
                     </div>
                   )}
                   {couponError && <p className="mb-3 font-sans text-xs text-red-600">{couponError}</p>}
+                  </>
+                  )}
 
                   {/* bill */}
                   <div className="mt-6 rounded-2xl bg-white p-5">

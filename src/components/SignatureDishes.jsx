@@ -93,7 +93,14 @@ function DishCard({ item, qty, onAdd, onRemove, index, storeOpen = true }) {
             )}
           </div>
 
-          {!orderable ? null : qty === 0 ? (
+          {!orderable ? (
+            <button
+              disabled
+              className="rounded-xl border-2 border-gray-300 px-4 py-1.5 font-sans text-sm font-bold text-gray-400 bg-gray-100 cursor-not-allowed"
+            >
+              {item.available ? 'Closed' : 'Sold Out'}
+            </button>
+          ) : qty === 0 ? (
             <button
               onClick={() => onAdd(item)}
               className="rounded-xl border-2 border-brand-primary px-4 py-1.5 font-sans text-sm font-bold text-brand-primary
@@ -102,14 +109,18 @@ function DishCard({ item, qty, onAdd, onRemove, index, storeOpen = true }) {
               Add
             </button>
           ) : (
-            <div className="flex items-center gap-1 rounded-xl bg-brand-primary p-1 text-white">
-              <button onClick={() => onRemove(item.id)} aria-label={`Remove one ${item.name}`}
-                      className="grid h-7 w-7 place-items-center rounded-lg transition hover:bg-white/15">
+            <div className="flex items-center gap-3 rounded-xl bg-brand-primary px-2 py-1.5 text-white shadow-md">
+              <button
+                onClick={() => onRemove(item.id)}
+                className="flex h-6 w-6 items-center justify-center rounded-md bg-white/20 hover:bg-white/30"
+              >
                 <Minus className="h-4 w-4" />
               </button>
-              <span className="min-w-[1.25rem] text-center text-sm font-bold tabular-nums">{qty}</span>
-              <button onClick={() => onAdd(item)} aria-label={`Add one ${item.name}`}
-                      className="grid h-7 w-7 place-items-center rounded-lg transition hover:bg-white/15">
+              <span className="w-4 text-center font-sans text-sm font-bold">{qty}</span>
+              <button
+                onClick={() => onAdd(item)}
+                className="flex h-6 w-6 items-center justify-center rounded-md bg-white/20 hover:bg-white/30"
+              >
                 <Plus className="h-4 w-4" />
               </button>
             </div>

@@ -73,6 +73,13 @@ function OrderCard({ order }) {
   const finished = ['Delivered', 'Cancelled', 'Rejected'].includes(order.status);
   const showCode = !finished && /^\d{4}$/.test(String(order.verificationCode || ''));
 
+  // Written by adminUpdateOrderItems when an admin changes the items.
+  const balanceDue = Number(order.balanceDue) || 0;
+  const refundDue = Number(order.refundDue) || 0;
+  // Denormalised by the function so both clients read the same string rather
+  // than each digging the last element out of itemRevisions their own way.
+  const editReason = String(order.lastEditReason || '').trim();
+
   return (
     <div className="rounded-2xl border border-brand-primary/10 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -114,6 +121,42 @@ function OrderCard({ order }) {
           We've received your payment reference and are waiting for the bank to
           confirm it. This usually takes under a minute.
         </p>
+      )}
+
+      {/*
+        Shown when the kitchen changed the items after the order was placed —
+        usually because the customer rang to add or drop something.
+
+        The total above already updates on its own, because this card is a live
+        snapshot listener. That is exactly the problem this block solves: a
+        price silently changing under someone is worse than one that changes
+        with a reason attached. The website has no notification centre, so this
+        card is the only place a web customer would ever find out.
+      */}
+      {order.itemsEditedAt && (
+        <div className="mb-4 rounded-xl border border-brand-secondary/40 bg-brand-secondary/10 p-3">
+          <p className="font-sans text-[11px] font-bold uppercase tracking-wider text-brand-primary">
+            Order updated
+          </p>
+          <p className="mt-0.5 font-sans text-[12px] leading-relaxed text-brand-dark/70">
+            We changed the items on this order
+            {editReason ? ` — ${editReason}.` : '.'}
+            {' '}The total above reflects the change.
+          </p>
+
+          {/* Money on these is settled by hand, so the figure and who acts
+              next are both stated rather than left to be worked out. */}
+          {balanceDue > 0 && (
+            <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 font-sans text-[12px] font-bold text-amber-800">
+              Balance to pay: {inr(balanceDue)} — please pay this to the rider.
+            </p>
+          )}
+          {refundDue > 0 && (
+            <p className="mt-2 rounded-lg bg-emerald-50 px-2.5 py-2 font-sans text-[12px] font-bold text-emerald-800">
+              Refund due to you: {inr(refundDue)} — we'll return this to you.
+            </p>
+          )}
+        </div>
       )}
 
       <div className="mb-4 space-y-1">
