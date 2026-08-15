@@ -1,13 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "cleanUrls": true,
   "trailingSlash": false,
 
   "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/privacy-policy", "destination": "/privacy-policy.html" },
+    { "source": "/delete-account", "destination": "/delete-account.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
 
   "headers": [
