@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import {
+  validateSignupEmail, validateSignupName, validateSignupPassword,
+  canonicalEmail, isEmailAlias,
+} from '../lib/validate';
 
 export const GoogleMark = (props) => (
   <svg viewBox="0 0 24 24" className="h-5 w-5" {...props}>
@@ -43,16 +47,37 @@ export default function AuthPanel({ compact = false }) {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  // Local validation errors, distinct from authError which comes from Firebase.
+  const [fieldError, setFieldError] = useState('');
+  // Shown when the address is a dotted/plus alias of a plainer one.
+  const [aliasWarning, setAliasWarning] = useState('');
 
-  const swap = (next) => { clearAuthError?.(); setNotice(''); setMode(next); };
+  const swap = (next) => {
+    clearAuthError?.(); setNotice(''); setFieldError(''); setAliasWarning('');
+    setMode(next);
+  };
 
   async function submit(e) {
     e.preventDefault();
-    setBusy(true); setNotice('');
+    setNotice(''); setFieldError('');
+
+    // Checked before the network call. Firebase enforces a valid-looking email
+    // and six characters and nothing more — it will happily create an account
+    // named "aaaa" with the password "123456".
     if (mode === 'signup') {
-      await signUpWithEmail(email, password, name);
+      const bad = validateSignupName(name)
+        || validateSignupEmail(email)
+        || validateSignupPassword(password, { name, email });
+      if (bad) { setFieldError(bad); return; }
+    } else if (mode === 'signin' || mode === 'reset') {
+      if (!email.trim()) { setFieldError('Enter your email address.'); return; }
+    }
+
+    setBusy(true);
+    if (mode === 'signup') {
+      await signUpWithEmail(email.trim().toLowerCase(), password, name.trim());
     } else if (mode === 'signin') {
-      await signInWithEmail(email, password);
+      await signInWithEmail(email.trim().toLowerCase(), password);
     } else {
       const ok = await resetPassword(email);
       // Deliberately unconditional on whether the address exists — see
@@ -94,7 +119,18 @@ export default function AuthPanel({ compact = false }) {
 
         <input
           className={inputCls()} value={email} type="email"
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => { setEmail(e.target.value); setFieldError(''); }}
+          onBlur={() => {
+            // Warning only. Rewriting what someone typed would send their
+            // password reset to an address they never entered.
+            setAliasWarning(
+              mode === 'signup' && isEmailAlias(email)
+                ? `This looks like an alias of ${canonicalEmail(email)}. `
+                  + 'If you already have an account there, sign in instead — '
+                  + 'aliases create a separate account.'
+                : '',
+            );
+          }}
           autoComplete="email" placeholder="Email address" required
         />
 
@@ -105,7 +141,7 @@ export default function AuthPanel({ compact = false }) {
             // Tells the password manager to offer a new strong password on
             // signup and the saved one on sign-in.
             autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-            placeholder={mode === 'signup' ? 'Choose a password (min 6 characters)' : 'Password'}
+            placeholder={mode === 'signup' ? 'Choose a password (8+, letters and numbers)' : 'Password'}
             minLength={6} required
           />
         )}
@@ -122,6 +158,18 @@ export default function AuthPanel({ compact = false }) {
                 : 'Sign in'}
         </button>
       </form>
+
+      {fieldError && (
+        <p className="mb-3 flex items-start gap-1.5 font-sans text-xs text-red-600">
+          <AlertCircle className="mt-[1px] h-3.5 w-3.5 flex-shrink-0" />{fieldError}
+        </p>
+      )}
+
+      {aliasWarning && !fieldError && (
+        <p className="mb-3 flex items-start gap-1.5 rounded-lg bg-amber-50 p-2 font-sans text-xs text-amber-800">
+          <AlertCircle className="mt-[1px] h-3.5 w-3.5 flex-shrink-0" />{aliasWarning}
+        </p>
+      )}
 
       {authError && (
         <p className="mt-3 flex items-start gap-1.5 font-sans text-xs text-red-600">

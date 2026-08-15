@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 import Navbar from './components/Navbar';
@@ -14,18 +14,39 @@ import CheckoutModal, { OrderPlaced } from './components/CheckoutModal';
 import OrderTracking from './components/OrderTracking';
 import HelpCenter from './components/HelpCenter';
 
-import AppShell from './components/app/AppShell';
 import ProtectedRoute from './routes/ProtectedRoute';
-import HomePage from './pages/HomePage';
-import CartPage from './pages/CartPage';
-import OrdersPage from './pages/OrdersPage';
-import DietPlansPage from './pages/DietPlansPage';
-import SubscriptionsPage from './pages/SubscriptionsPage';
-import ProfilePage from './pages/ProfilePage';
-// ComingInPhase is no longer imported: every route is a real page now.
-
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
+
+/**
+ * The customer app is code-split away from the landing page.
+ *
+ * Everything below was imported eagerly, so a first-time visitor who only
+ * wanted to read the menu downloaded the meal picker, the live tracking map,
+ * the Google Maps loader and the Razorpay subscription flow before the hero
+ * image had painted — roughly 130 KB of source they had no route to.
+ *
+ * Split at the guard rather than per page: these six always load behind a
+ * sign-in, so they share a boundary naturally, and a visitor who never signs
+ * in never pays for any of it.
+ */
+const AppShell = lazy(() => import('./components/app/AppShell'));
+const HomePage = lazy(() => import('./pages/HomePage'));
+const CartPage = lazy(() => import('./pages/CartPage'));
+const OrdersPage = lazy(() => import('./pages/OrdersPage'));
+const DietPlansPage = lazy(() => import('./pages/DietPlansPage'));
+const SubscriptionsPage = lazy(() => import('./pages/SubscriptionsPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+
+/** Matches ProtectedRoute's spinner, so a chunk load is not a visual jump. */
+function RouteFallback() {
+  return (
+    <div className="grid min-h-screen place-items-center bg-brand-offwhite">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-primary border-t-transparent" />
+    </div>
+  );
+}
+
 
 /**
  * Public landing page.
@@ -120,7 +141,9 @@ export default function App() {
             <Route
               element={
                 <ProtectedRoute>
-                  <AppShell />
+                  <Suspense fallback={<RouteFallback />}>
+                    <AppShell />
+                  </Suspense>
                 </ProtectedRoute>
               }
             >

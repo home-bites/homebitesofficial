@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore';
 import {
   User, MapPin, LogOut, Plus, Trash2, Check, Loader2, AlertCircle, Mail, Phone,
+  LifeBuoy, MessageCircle, Smartphone,
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
@@ -12,6 +13,7 @@ import { useAddresses } from '../lib/useAddresses';
 import MapPicker from '../components/MapPicker';
 import { checkCoordinates } from '../lib/serviceArea';
 import PhoneVerify from '../components/app/PhoneVerify';
+import { useAppSettings } from '../lib/useAppSettings';
 
 /**
  * Profile, saved addresses and wallet.
@@ -44,6 +46,15 @@ function Field({ icon: Icon, label, value }) {
 export default function ProfilePage() {
   const { user, profile, signOut, updateProfile } = useAuth();
   const { addresses, loading: addrLoading } = useAddresses();
+  const appSettings = useAppSettings();
+
+  // The admin-set number wins; the env value is the fallback for the seconds
+  // before settings arrive, and if Firestore is unreachable.
+  const supportPhone = appSettings.supportPhone
+    || import.meta.env.VITE_SUPPORT_PHONE
+    || '';
+  const supportEmail = import.meta.env.VITE_SUPPORT_EMAIL || 'support@hombites.com';
+  const waNumber = supportPhone.replace(/\D/g, '');
   const navigate = useNavigate();
 
   const [name, setName] = useState('');
@@ -345,6 +356,70 @@ export default function ProfilePage() {
             </button>
           </div>
         ))}
+      </section>
+
+      {/* ---- support ---- */}
+      <section className="mb-5 rounded-2xl border border-brand-primary/10 bg-white p-4">
+        <h2 className="mb-3 flex items-center gap-2 font-sans text-xs font-bold uppercase tracking-wider text-brand-dark/45">
+          <LifeBuoy className="h-4 w-4" /> Need help?
+        </h2>
+
+        <div className="space-y-2">
+          {supportPhone && (
+            <a href={`tel:${supportPhone.replace(/\s/g, '')}`}
+               className="flex items-center gap-3 rounded-xl border border-brand-primary/10 px-3 py-2.5 transition-colors hover:border-brand-primary/30">
+              <Phone className="h-4 w-4 shrink-0 text-brand-primary" />
+              <div className="min-w-0 flex-1">
+                <p className="font-sans text-xs font-bold text-brand-dark">Call us</p>
+                <p className="truncate font-sans text-[11px] text-brand-dark/45">{supportPhone}</p>
+              </div>
+            </a>
+          )}
+
+          {waNumber.length >= 10 && (
+            <a href={`https://wa.me/${waNumber.length === 10 ? `91${waNumber}` : waNumber}`}
+               target="_blank" rel="noreferrer"
+               className="flex items-center gap-3 rounded-xl border border-brand-primary/10 px-3 py-2.5 transition-colors hover:border-brand-primary/30">
+              <MessageCircle className="h-4 w-4 shrink-0 text-brand-primary" />
+              <div className="min-w-0 flex-1">
+                <p className="font-sans text-xs font-bold text-brand-dark">WhatsApp</p>
+                <p className="truncate font-sans text-[11px] text-brand-dark/45">
+                  Fastest for order questions
+                </p>
+              </div>
+            </a>
+          )}
+
+          <a href={`mailto:${supportEmail}`}
+             className="flex items-center gap-3 rounded-xl border border-brand-primary/10 px-3 py-2.5 transition-colors hover:border-brand-primary/30">
+            <Mail className="h-4 w-4 shrink-0 text-brand-primary" />
+            <div className="min-w-0 flex-1">
+              <p className="font-sans text-xs font-bold text-brand-dark">Email us</p>
+              <p className="truncate font-sans text-[11px] text-brand-dark/45">{supportEmail}</p>
+            </div>
+          </a>
+        </div>
+
+        {appSettings.storeAddress && (
+          <p className="mt-3 border-t border-brand-primary/8 pt-3 font-sans text-[11px] leading-relaxed text-brand-dark/40">
+            {appSettings.storeAddress}
+          </p>
+        )}
+      </section>
+
+      {/* ---- apps coming soon ---- */}
+      <section className="mb-5 flex items-start gap-3 rounded-2xl border border-brand-secondary/40 bg-brand-secondary/10 p-4">
+        <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-brand-primary" />
+        <div>
+          <p className="font-display text-sm font-bold text-brand-primary">
+            HomeBites apps are coming soon
+          </p>
+          <p className="mt-0.5 font-sans text-xs leading-relaxed text-brand-dark/55">
+            Android and iOS are on the way. Verify your mobile number above and
+            you'll be able to sign in with the same account — your orders,
+            addresses and subscriptions will already be there.
+          </p>
+        </div>
       </section>
 
       <button onClick={handleSignOut}

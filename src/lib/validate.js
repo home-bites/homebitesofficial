@@ -191,3 +191,148 @@ export function validateOrderForm({ name, phone, doorInfo, note }) {
   if (!t.ok) errors.note = t.error;
   return errors;
 }
+
+/* ------------------------------------------------------------------ */
+/* Sign-up hardening                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Throwaway-inbox domains.
+ *
+ * Not a security control — anyone determined can register a domain. It stops
+ * the casual case: a free-delivery coupon redeemed twenty times from twenty
+ * ten-minute mailboxes. Kept deliberately short and obvious rather than
+ * importing a 40,000-entry list that would block real customers on some
+ * regional provider nobody here has heard of.
+ */
+const DISPOSABLE_DOMAINS = new Set([
+  'mailinator.com', 'guerrillamail.com', 'guerrillamail.net', '10minutemail.com',
+  'tempmail.com', 'temp-mail.org', 'throwawaymail.com', 'yopmail.com',
+  'trashmail.com', 'sharklasers.com', 'getnada.com', 'dispostable.com',
+  'maildrop.cc', 'fakeinbox.com', 'mailnesia.com', 'mintemail.com',
+]);
+
+/**
+ * The canonical form of an address, for spotting the same inbox twice.
+ *
+ * Gmail ignores dots and everything after a '+', so `a.b+deal@gmail.com` and
+ * `ab@gmail.com` deliver to one person — but Firebase Auth treats them as two
+ * separate accounts, which is how one customer collects a first-order discount
+ * repeatedly.
+ *
+ * This is used to *warn*, not to rewrite what gets registered. Silently
+ * changing the address someone typed would send their password reset somewhere
+ * they did not expect. Genuine enforcement needs a server-side lookup, since
+ * firestore.rules deliberately forbids a client from listing `users` — that
+ * restriction exists to prevent account enumeration and is worth keeping.
+ */
+export function canonicalEmail(raw) {
+  const email = String(raw || '').trim().toLowerCase();
+  const at = email.lastIndexOf('@');
+  if (at < 1) return email;
+
+  let local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+
+  const plus = local.indexOf('+');
+  if (plus > 0) local = local.slice(0, plus);
+
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    local = local.replace(/\./g, '');
+    return `${local}@gmail.com`;
+  }
+  return `${local}@${domain}`;
+}
+
+/** True when the address is an alias of a plainer one. */
+export function isEmailAlias(raw) {
+  const email = String(raw || '').trim().toLowerCase();
+  return Boolean(email) && canonicalEmail(email) !== email;
+}
+
+export function validateSignupEmail(raw) {
+  const email = String(raw || '').trim().toLowerCase();
+  if (!email) return 'Enter your email address.';
+  // Deliberately loose. Over-strict email regexes reject valid addresses, and
+  // the real proof of ownership is the account itself.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    return 'That email address does not look right.';
+  }
+  if (email.length > 254) return 'That email address is too long.';
+
+  const domain = email.slice(email.lastIndexOf('@') + 1);
+  if (DISPOSABLE_DOMAINS.has(domain)) {
+    return 'Please use a permanent email address — we send order updates there.';
+  }
+  return '';
+}
+
+/**
+ * Rejects text that is obviously not a real name.
+ *
+ * Three separate checks, because they catch different things:
+ *   - character set: digits and symbols are not names
+ *   - repetition: "aaaaaa" and "asdasdasd"
+ *   - vowels: "xkcdfgh" is keyboard mashing
+ *
+ * Every rule here risks a false positive on a name nobody in this office has
+ * seen, so each is loose enough to admit unusual real names and only rejects
+ * input that could not plausibly be one.
+ */
+export function validateSignupName(raw) {
+  const name = String(raw || '').trim().replace(/\s+/g, ' ');
+  if (!name) return 'Enter your name.';
+  if (name.length < 2) return 'That name is too short.';
+  if (name.length > 40) return 'That name is too long.';
+  if (!/^[A-Za-zÀ-ÿĀ-ſ\s'.-]+$/.test(name)) {
+    return 'Names can only contain letters, spaces, apostrophes and hyphens.';
+  }
+  // Four or more of the same letter in a row.
+  if (/(.)\1{3,}/i.test(name)) return 'Please enter your real name.';
+  // A short repeating unit typed over and over: asdasdasd, ababab.
+  if (/^(.{2,4})\1{2,}$/i.test(name.replace(/\s/g, ''))) {
+    return 'Please enter your real name.';
+  }
+  // No vowel at all in a run of six letters.
+  const letters = name.replace(/[^A-Za-zÀ-ÿ]/g, '');
+  if (letters.length >= 6 && !/[aeiouyà-ÿ]/i.test(letters)) {
+    return 'Please enter your real name.';
+  }
+  return '';
+}
+
+/**
+ * Password strength.
+ *
+ * Firebase enforces six characters and nothing else, which admits "123456".
+ * Eight with a letter and a digit is a low bar that removes the passwords
+ * actually seen in credential-stuffing lists, without demanding symbols that
+ * push people towards writing it on a sticky note.
+ */
+export function validateSignupPassword(raw, { name = '', email = '' } = {}) {
+  const pw = String(raw || '');
+  if (pw.length < 8) return 'Use at least 8 characters.';
+  if (pw.length > 128) return 'That password is too long.';
+  if (!/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)) {
+    return 'Include at least one letter and one number.';
+  }
+  if (/^(.)\1+$/.test(pw)) return 'That password is too simple.';
+
+  const COMMON = [
+    'password', '12345678', '123456789', 'qwerty123', 'abc12345',
+    'password1', '11111111', 'iloveyou', 'admin123', 'welcome1',
+  ];
+  if (COMMON.includes(pw.toLowerCase())) return 'That password is too common.';
+
+  // A password containing the account name or email local part is the first
+  // thing anyone guessing would try.
+  const localPart = String(email).split('@')[0] || '';
+  const needle = pw.toLowerCase();
+  if (name.trim().length >= 4 && needle.includes(name.trim().toLowerCase())) {
+    return 'Do not use your name in your password.';
+  }
+  if (localPart.length >= 4 && needle.includes(localPart.toLowerCase())) {
+    return 'Do not use your email address in your password.';
+  }
+  return '';
+}

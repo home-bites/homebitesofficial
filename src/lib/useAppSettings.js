@@ -23,6 +23,10 @@ export function useAppSettings() {
     taxRate: 0,
     deliveryCharge: 0,
     rainCharge: 0,
+    // Contact details, so the support number shown to customers is the one the
+    // admin set rather than a constant that goes stale the day it changes.
+    supportPhone: '',
+    storeAddress: '',
     loaded: false,
   });
 
@@ -38,6 +42,8 @@ export function useAppSettings() {
           taxRate: Number(d.taxRate) || 0,
           deliveryCharge: Number(d.deliveryCharge) || 0,
           rainCharge: Number(d.rainCharge) || 0,
+          supportPhone: String(d.supportPhone || ''),
+          storeAddress: String(d.storeAddress || ''),
           loaded: true,
         });
       },
