@@ -1,14 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import Button from '../common/Button';
+// Button is no longer imported: its only uses here were the Play Store and
+// App Store badge variants, both removed with the Coming Soon block.
 import Container from '../common/Container';
 import Badge from '../common/Badge';
 import BackgroundEffects from './BackgroundEffects';
+import AuthModal from './AuthModal';
 import appScreenHero from '../assets/app_screen_hero.webp';
 import foodPlate from '../assets/food_plate.webp';
 import quickInfo from '../assets/quick_info.webp';
 
 const Hero = () => {
+  // The hero owns its own auth dialog rather than taking a callback prop.
+  // Navbar already does the same, and AuthModal closes itself once the user is
+  // signed in — at which point App's LandingOrApp redirects into /home, so
+  // neither copy needs to know about the other.
+  const [authOpen, setAuthOpen] = useState(false);
+
   // Fade-in-up variants for clean entrance
   const fadeInUp = {
     hidden: { opacity: 0, y: 30 },
@@ -70,29 +78,33 @@ const Hero = () => {
               animate="visible"
               className="flex flex-col items-start gap-5 w-full sm:w-auto"
             >
-              {/* Coming Soon Button */}
-              <div className="relative group">
-                <button 
-                  disabled
-                  className="relative px-8 py-4 bg-brand-secondary text-brand-primary font-display font-extrabold text-base md:text-lg tracking-wider rounded-xl cursor-not-allowed opacity-90 border border-brand-secondary/35 flex items-center gap-3 shadow-lg select-none"
+              {/*
+                Customer access, not a waiting list.
+
+                This block held a disabled "COMING SOON" button and the Play
+                Store and App Store badges. The website now *is* the customer
+                experience — ordering, tracking and subscriptions all run here
+                — so advertising an unreleased app above a working storefront
+                told visitors the opposite of the truth and gave them nothing
+                to click.
+              */}
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+                <button
+                  onClick={() => setAuthOpen(true)}
+                  className="rounded-xl bg-brand-secondary px-8 py-4 font-display text-base font-extrabold tracking-wider text-brand-primary shadow-lg transition-transform hover:scale-[1.02] active:scale-95 md:text-lg"
                 >
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-primary opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-brand-primary"></span>
-                  </span>
-                  COMING SOON
+                  Create account
+                </button>
+                <button
+                  onClick={() => setAuthOpen(true)}
+                  className="rounded-xl border border-brand-offwhite/30 px-8 py-4 font-display text-base font-extrabold tracking-wider text-brand-offwhite transition-colors hover:bg-brand-offwhite/10 md:text-lg"
+                >
+                  Log in
                 </button>
               </div>
 
-              {/* Play Store Button */}
-              <Button variant="playstore" className="scale-100" />
-
-              {/* App Store Button */}
-              <Button variant="appstore" className="scale-100" />
-              
-              {/* Launching Soon Text */}
-              <span className="text-xs tracking-widest uppercase text-brand-offwhite/40 font-bold ml-1 font-display mt-2 block">
-                Launching Soon • Stay Tuned
+              <span className="ml-1 mt-1 block font-display text-xs font-bold uppercase tracking-widest text-brand-offwhite/40">
+                Order online • Live tracking • Meal subscriptions
               </span>
             </motion.div>
           </div>
@@ -197,6 +209,7 @@ const Hero = () => {
         </Container>
       </div>
 
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
     </section>
   );
 };

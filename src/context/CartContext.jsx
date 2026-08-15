@@ -1,24 +1,63 @@
-import React, { createContext, useContext, useMemo, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { collection, getDocs, query, where, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { normaliseCoupon } from '../lib/validate';
+import { useAppSettings } from '../lib/useAppSettings';
+import { useAuth } from './AuthContext';
+import {
+  loadRemoteCart, saveRemoteCart, watchRemoteCart, mergeLines, sameLines,
+} from '../lib/cartSync';
 
 const CartContext = createContext(null);
 export const useCart = () => useContext(CartContext);
 
 /**
- * Flat fee on every order. Shown to the customer as "Platform fee".
+ * Fallback platform fee, used only until the live settings document arrives —
+ * and if Firestore is unreachable, for the whole session.
  *
- * The 10 here is the fallback for a build where VITE_DELIVERY_FEE wasn't
- * set — it must match the .env value, or a misconfigured deploy quietly
- * charges a different amount than the one you agreed.
+ * The fee now comes from `appSettings/general.platformFee`, the same field the
+ * mobile app and admin dashboard read. It used to come from this constant
+ * alone, which is baked in at build time: changing the fee in Settings updated
+ * the app instantly and the website never, so the two quoted different totals
+ * for the same basket until somebody redeployed.
+ *
+ * This value must still match your .env and the dashboard, because it is what
+ * a customer is charged in the seconds before settings load.
  */
-const DELIVERY_FEE = Number(import.meta.env.VITE_DELIVERY_FEE ?? 10);
+const FALLBACK_PLATFORM_FEE = Number(import.meta.env.VITE_DELIVERY_FEE ?? 10);
 const STORAGE_KEY = 'homebites.cart.v1';
 
 export function CartProvider({ children }) {
+  // Live pricing. `platformFee` is null until the document arrives, which is
+  // why the fallback below is a `??` rather than a `||` — a genuine fee of 0
+  // set by an admin must survive, and `0 || 10` would quietly become 10.
+  const appSettings = useAppSettings();
+  const platformFee = appSettings.platformFee ?? FALLBACK_PLATFORM_FEE;
+
+  // CartProvider is mounted inside AuthProvider in App.jsx, so this is safe.
+  const { user } = useAuth();
+
   // Map<itemId, { item, qty }> held as a plain object for easy persistence.
   const [lines, setLines] = useState({});
+
+  // Guards the write-back effect. Without it the first cloud snapshot after
+  // sign-in would be written straight back, and a remote clear performed on the
+  // phone would race the website re-uploading what it still held.
+  const syncedRef = useRef(false);
+
+  /**
+   * Where the basket currently lives, as far as the customer is concerned.
+   *
+   *   'local'  — signed out. Saved on this device only.
+   *   'synced' — written to the cloud; the phone will see it.
+   *   'error'  — a write failed. The basket still works here, but the phone
+   *              will not see these changes.
+   *
+   * Surfaced in the cart rather than only logged. A cart that has quietly
+   * stopped syncing is indistinguishable from a healthy one until the customer
+   * opens their phone and finds a stale basket.
+   */
+  const [syncState, setSyncState] = useState('local');
   const [coupon, setCoupon] = useState(null);       // validated CouponModel-ish
   const [couponError, setCouponError] = useState('');
   const [couponBusy, setCouponBusy] = useState(false);
@@ -34,6 +73,73 @@ export function CartProvider({ children }) {
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(lines)); } catch { /* quota */ }
   }, [lines]);
+
+  /**
+   * Sign-in: merge whatever is in this browser with the customer's cloud cart.
+   *
+   * `mergeLines` unions the two and takes the larger quantity per dish — see
+   * cartSync.js for why neither side is allowed to win outright. Running once
+   * per uid, before the listener is attached, so the merged result is what gets
+   * published rather than one side overwriting the other.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      // Signed out: the cloud cart is not ours to touch. The local basket stays
+      // so an accidental sign-out does not empty someone's order.
+      syncedRef.current = false;
+      setSyncState('local');
+      return undefined;
+    }
+
+    (async () => {
+      const remote = await loadRemoteCart(user.uid);
+      if (cancelled) return;
+
+      setLines((local) => {
+        const merged = remote ? mergeLines(local, remote) : local;
+        // Push the merge up immediately when it differs from what the cloud
+        // holds, so the phone sees the website's additions without waiting for
+        // the next local change.
+        if (!remote || !sameLines(merged, remote)) {
+          saveRemoteCart(user.uid, merged).then((ok) => setSyncState(ok ? 'synced' : 'error'));
+        } else {
+          setSyncState('synced');
+        }
+        return merged;
+      });
+
+      syncedRef.current = true;
+    })();
+
+    return () => { cancelled = true; };
+  }, [user]);
+
+  /**
+   * Cloud -> local. Picks up a change made on the phone while the site is open.
+   *
+   * Ignored until the merge above has run, otherwise the first snapshot would
+   * arrive mid-merge and clobber the local basket.
+   */
+  useEffect(() => {
+    if (!user) return undefined;
+    return watchRemoteCart(user.uid, (remoteLines) => {
+      if (!syncedRef.current) return;
+      setLines((local) => (sameLines(local, remoteLines) ? local : remoteLines));
+    });
+  }, [user]);
+
+  /**
+   * Local -> cloud, on every basket change.
+   *
+   * `sameLines` in the listener above is what stops this becoming a loop: a
+   * write echoes back as a snapshot, the snapshot matches what we hold, and the
+   * update is dropped rather than triggering another write.
+   */
+  useEffect(() => {
+    if (!user || !syncedRef.current) return;
+    saveRemoteCart(user.uid, lines).then((ok) => setSyncState(ok ? 'synced' : 'error'));
+  }, [lines, user]);
 
   const add = useCallback((item) => {
     setLines((prev) => {
@@ -79,17 +185,41 @@ export function CartProvider({ children }) {
       if (discount > subtotal) discount = subtotal;
     }
 
-    const delivery = count > 0 ? DELIVERY_FEE : 0;
-    const grand = Math.max(0, subtotal - discount) + delivery;
+    // Full bill, matching getGrandTotal() in the app's checkout_screen.dart:
+    //
+    //   (subtotal − discount) + delivery + rain + platform + tax
+    //
+    // The website used to charge a single flat fee and write it into the
+    // order's `deliveryCharge` field while recording platformFee and taxAmount
+    // as 0. So a website order showed no GST at all, and a "delivery charge"
+    // that was really the platform fee — the totals looked plausible on the
+    // page and were wrong in every report that read them.
+    //
+    // Zero when the cart is empty: charging a platform fee on nothing would
+    // show a non-zero total on an empty basket.
+    const charged = count > 0;
+    const taxable = Math.max(0, subtotal - discount);
+
+    const deliveryCharge = charged ? appSettings.deliveryCharge : 0;
+    const rainCharge = charged ? appSettings.rainCharge : 0;
+    const platform = charged ? platformFee : 0;
+    const tax = charged ? (taxable * appSettings.taxRate) / 100 : 0;
+
+    const grand = taxable + deliveryCharge + rainCharge + platform + tax;
 
     return {
       count,
       subtotal: +subtotal.toFixed(2),
       discount: +discount.toFixed(2),
-      delivery,
+      deliveryCharge: +deliveryCharge.toFixed(2),
+      rainCharge: +rainCharge.toFixed(2),
+      platformFee: +platform.toFixed(2),
+      tax: +tax.toFixed(2),
+      taxRate: appSettings.taxRate,
       grand: +grand.toFixed(2),
     };
-  }, [lines, coupon]);
+  }, [lines, coupon, platformFee, appSettings.deliveryCharge,
+      appSettings.rainCharge, appSettings.taxRate]);
 
   /**
    * Looks a coupon up by code and validates it against the current subtotal.
@@ -184,10 +314,12 @@ export function CartProvider({ children }) {
   }, [totals.subtotal, coupon]);
 
   const value = useMemo(() => ({
-    lines, items: Object.values(lines), totals, deliveryFee: DELIVERY_FEE,
+    lines, items: Object.values(lines), totals, deliveryFee: platformFee,
+    syncState,
+    minimumOrderValue: appSettings.minimumOrderValue,
     add, remove, clear, qtyOf,
     coupon, couponError, couponBusy, applyCoupon, removeCoupon,
-  }), [lines, totals, add, remove, clear, qtyOf, coupon, couponError, couponBusy, applyCoupon, removeCoupon]);
+  }), [lines, totals, platformFee, syncState, appSettings.minimumOrderValue, add, remove, clear, qtyOf, coupon, couponError, couponBusy, applyCoupon, removeCoupon]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

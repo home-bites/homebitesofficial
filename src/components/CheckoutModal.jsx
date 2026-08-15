@@ -398,10 +398,18 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
         customerPhone: phone,
         items: orderItems,
         subtotal: totals.subtotal,
-        deliveryCharge: totals.delivery,
-        rainCharge: 0,
-        platformFee: 0,
-        taxAmount: 0,
+        // Each charge under its own name, matching what the app writes and
+        // what the admin dashboard and order-details screens read back.
+        //
+        // This block previously put the flat fee into `deliveryCharge` and
+        // recorded `platformFee: 0, taxAmount: 0`. Every website order in the
+        // database therefore claims it collected no GST and no platform fee,
+        // and attributes the money to a delivery charge that was never one.
+        // Existing orders keep those values; new ones are correct.
+        deliveryCharge: totals.deliveryCharge,
+        rainCharge: totals.rainCharge,
+        platformFee: totals.platformFee,
+        taxAmount: totals.tax,
         totalAmount: totals.grand,
         grandTotal: totals.grand,
         discountAmount: totals.discount,
@@ -853,10 +861,34 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
                         <span>Coupon discount</span><span>−{inr(totals.discount)}</span>
                       </div>
                     )}
+                    {/* Same lines, same order, same source as the cart page —
+                        both read totals, so they cannot drift apart. Charges
+                        set to zero in the dashboard are hidden rather than
+                        listed as ₹0.00, which reads like a mistake. */}
+                    {totals.deliveryCharge > 0 && (
+                      <div className="flex justify-between py-1 font-sans text-sm">
+                        <span className="text-brand-dark/60">Delivery charge</span>
+                        <span>{inr(totals.deliveryCharge)}</span>
+                      </div>
+                    )}
+                    {totals.rainCharge > 0 && (
+                      <div className="flex justify-between py-1 font-sans text-sm">
+                        <span className="text-brand-dark/60">Rain / peak charge</span>
+                        <span>{inr(totals.rainCharge)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between py-1 font-sans text-sm">
                       <span className="text-brand-dark/60">Platform fee</span>
-                      <span>{totals.delivery === 0 ? 'Free' : inr(totals.delivery)}</span>
+                      <span>{totals.platformFee === 0 ? 'Free' : inr(totals.platformFee)}</span>
                     </div>
+                    {totals.tax > 0 && (
+                      <div className="flex justify-between py-1 font-sans text-sm">
+                        <span className="text-brand-dark/60">
+                          Taxes &amp; GST{totals.taxRate ? ` (${totals.taxRate}%)` : ''}
+                        </span>
+                        <span>{inr(totals.tax)}</span>
+                      </div>
+                    )}
                     <div className="mt-3 flex justify-between border-t border-brand-primary/10 pt-3 font-display text-lg font-bold text-brand-dark">
                       <span>To pay</span><span>{inr(totals.grand)}</span>
                     </div>

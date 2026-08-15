@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import About from './components/About';
@@ -6,39 +8,53 @@ import SignatureDishes from './components/SignatureDishes';
 import Features from './components/Features';
 import HowItWorks from './components/HowItWorks';
 import Showcase from './components/Showcase';
-import ComingSoon from './components/ComingSoon';
 import Footer from './components/Footer';
 import CartBar from './components/CartBar';
 import CheckoutModal, { OrderPlaced } from './components/CheckoutModal';
 import OrderTracking from './components/OrderTracking';
 import HelpCenter from './components/HelpCenter';
-import { AuthProvider } from './context/AuthContext';
+
+import AppShell from './components/app/AppShell';
+import ProtectedRoute from './routes/ProtectedRoute';
+import HomePage from './pages/HomePage';
+import CartPage from './pages/CartPage';
+import OrdersPage from './pages/OrdersPage';
+import DietPlansPage from './pages/DietPlansPage';
+import SubscriptionsPage from './pages/SubscriptionsPage';
+import ProfilePage from './pages/ProfilePage';
+// ComingInPhase is no longer imported: every route is a real page now.
+
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 
-function Site() {
+/**
+ * Public landing page.
+ *
+ * ComingSoon and the store-badge block are gone: the website is the product
+ * now, not an advert for an app that has not shipped. Everything else here is
+ * unchanged and still works — the marketing sections, the live menu, the
+ * checkout modal and order tracking all behave exactly as before for a
+ * visitor who has not signed in.
+ */
+function Landing() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [trackingOpen, setTrackingOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [placed, setPlaced] = useState(null);
 
   return (
-    <div className="bg-[#F8F5EE] min-h-screen text-brand-dark overflow-x-hidden selection:bg-brand-secondary/35 selection:text-brand-primary">
+    <div className="min-h-screen overflow-x-hidden bg-[#F8F5EE] text-brand-dark selection:bg-brand-secondary/35 selection:text-brand-primary">
       <Navbar onTrackOrder={() => setTrackingOpen(true)} />
 
       <Hero />
       <About />
-
-      {/* Ordering: live menu straight from Firestore */}
       <SignatureDishes />
-
       <Features />
       <HowItWorks />
       <Showcase />
-      <ComingSoon />
 
       <Footer onOpenHelp={() => setHelpOpen(true)} />
 
-      {/* Sticky bag summary — only rendered once something is in the cart */}
       <CartBar onOpen={() => setCheckoutOpen(true)} />
 
       <CheckoutModal
@@ -59,11 +75,67 @@ function Site() {
   );
 }
 
+/**
+ * Sends an already-signed-in visitor from the landing page into the app.
+ *
+ * Waits for `loading` to resolve first. Redirecting on `isSignedIn` alone
+ * would flash the marketing page on every refresh, because AuthContext has not
+ * yet heard back from onAuthStateChanged at first paint.
+ */
+function LandingOrApp() {
+  const { isSignedIn, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-brand-offwhite">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-primary border-t-transparent" />
+      </div>
+    );
+  }
+  return isSignedIn ? <Navigate to="/home" replace /> : <Landing />;
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <CartProvider>
-        <Site />
+        {/*
+          Opting in to the v7 behaviours now.
+
+          Both warnings describe changes React Router will make by default in
+          v7: state updates wrapped in React.startTransition, and relative
+          route resolution inside splat routes. Enabling them here means the
+          eventual upgrade is a version bump rather than a debugging session,
+          and it silences two warnings that otherwise sit in the console making
+          real errors harder to notice.
+        */}
+        <BrowserRouter
+          future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        >
+          <Routes>
+            <Route path="/" element={<LandingOrApp />} />
+
+            {/* Customer app. One guard on the layout rather than one per
+                child — a route added later inherits protection instead of
+                needing somebody to remember to wrap it. */}
+            <Route
+              element={
+                <ProtectedRoute>
+                  <AppShell />
+                </ProtectedRoute>
+              }
+            >
+              <Route path="/home" element={<HomePage />} />
+              <Route path="/cart" element={<CartPage />} />
+              <Route path="/diet-plans" element={<DietPlansPage />} />
+              <Route path="/orders" element={<OrdersPage />} />
+              <Route path="/subscriptions" element={<SubscriptionsPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+            </Route>
+
+            {/* Unknown paths go home rather than to a blank screen. */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
       </CartProvider>
     </AuthProvider>
   );

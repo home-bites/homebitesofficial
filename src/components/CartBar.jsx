@@ -10,7 +10,7 @@ import { useCart } from '../context/CartContext';
  * reachable with a thumb.
  */
 export default function CartBar({ onOpen }) {
-  const { totals } = useCart();
+  const { totals, syncState } = useCart();
   const has = totals.count > 0;
 
   return (
@@ -33,6 +33,15 @@ export default function CartBar({ onOpen }) {
               <p className="font-sans text-[11px] uppercase tracking-[0.14em] text-white/60">
                 {totals.count} {totals.count === 1 ? 'item' : 'items'} in your bag
               </p>
+              {/* The signed-out case lives here, not on /cart — that route is
+                  behind the auth guard, so a customer who has not signed in can
+                  only ever see this bar. Reassurance rather than a warning: the
+                  basket merges on sign-in, it is not replaced. */}
+              {syncState === 'local' && (
+                <p className="font-sans text-[10px] text-white/45">
+                  Saved on this device — sign in at checkout to keep it
+                </p>
+              )}
               <p className="font-display text-xl font-bold leading-tight">{inr(totals.grand)}</p>
             </div>
 
