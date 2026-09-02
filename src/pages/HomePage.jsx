@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Heart, MapPin, Plus, Minus, AlertCircle, X, Flame } from 'lucide-react';
+import { Search, Heart, MapPin, Plus, Minus, AlertCircle, Flame } from 'lucide-react';
 import { useMenu, filterByCategory, searchItems, isVeg } from '../lib/useMenu';
 import { useFavorites } from '../lib/useFavorites';
 import { useCart } from '../context/CartContext';
 import { useStoreOpen } from '../lib/useStoreOpen';
 import { useAuth } from '../context/AuthContext';
 import { inr } from '../lib/format';
+import DishDetail from '../components/DishDetail';
 
 /**
  * Customer home.
@@ -173,92 +174,17 @@ function DishCard({ item, onOpen }) {
   );
 }
 
-function DishDetail({ item, onClose }) {
-  const { add, remove, qtyOf } = useCart();
-  if (!item) return null;
-  const qty = qtyOf(item.id);
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-brand-dark/70 backdrop-blur-sm sm:items-center sm:p-6"
-      onClick={onClose}
-    >
-      <div
-        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-[28px] bg-white sm:rounded-[28px]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="relative">
-          {item.imageUrl && (
-            <img src={item.imageUrl} alt={item.name}
-                 className="aspect-[5/4] w-full object-cover sm:rounded-t-[28px]" />
-          )}
-          <button onClick={onClose} aria-label="Close"
-                  className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-white/90 shadow-md backdrop-blur">
-            <X className="h-4 w-4 text-brand-dark/60" />
-          </button>
-        </div>
-
-        <div className="p-6">
-          <div className="mb-3 flex items-start gap-2.5">
-            <VegDot item={item} className="mt-1.5" />
-            <h2 className="font-display text-2xl font-bold leading-tight text-brand-dark">
-              {item.name}
-            </h2>
-          </div>
-
-          {item.description && (
-            <p className="mb-5 font-sans text-sm leading-relaxed text-brand-dark/55">
-              {item.description}
-            </p>
-          )}
-
-          <div className="mb-6 flex items-baseline gap-2.5">
-            <span className="font-display text-3xl font-bold text-brand-primary">
-              {inr(item.price)}
-            </span>
-            {item.hasDiscount && (
-              <>
-                <span className="font-sans text-base text-brand-dark/30 line-through">
-                  {inr(item.originalPrice)}
-                </span>
-                <span className="rounded-full bg-brand-accent/10 px-2 py-0.5 font-sans text-[11px] font-bold text-brand-accent">
-                  Save {inr(item.originalPrice - item.price)}
-                </span>
-              </>
-            )}
-          </div>
-
-          {item.isAvailable ? (
-            qty === 0 ? (
-              <button onClick={() => add(item)}
-                      className="w-full rounded-2xl bg-brand-primary py-4 font-display text-base font-bold text-white transition-colors hover:bg-brand-primary/90">
-                Add to bag · {inr(item.price)}
-              </button>
-            ) : (
-              <div className="flex items-center justify-between rounded-2xl border-2 border-brand-primary px-2 py-2">
-                <button onClick={() => remove(item.id)}
-                        className="grid h-11 w-11 place-items-center rounded-xl text-brand-primary">
-                  <Minus className="h-5 w-5" strokeWidth={2.5} />
-                </button>
-                <span className="font-display text-base font-bold text-brand-primary">
-                  {qty} in your bag
-                </span>
-                <button onClick={() => add(item)}
-                        className="grid h-11 w-11 place-items-center rounded-xl text-brand-primary">
-                  <Plus className="h-5 w-5" strokeWidth={2.5} />
-                </button>
-              </div>
-            )
-          ) : (
-            <p className="rounded-2xl bg-brand-offwhite py-4 text-center font-display text-base font-bold text-brand-dark/35">
-              Currently unavailable
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+/* The dish detail sheet lives in components/DishDetail.jsx and is shared with
+ * the Signature Dishes section. A second, local copy used to sit here and
+ * rendered seven fields — name, description, price, original price, discount,
+ * availability and id. Everything else an admin enters (badges, tags,
+ * ingredients, allergens, calories, cooking time, spice level, prep time and
+ * the gallery) was normalised, carried all the way to this component, and
+ * then dropped on the floor.
+ *
+ * Deleted rather than extended: two sheets over one normalised object is the
+ * same duplication that produced two menu parsers.
+ */
 
 export default function HomePage() {
   const { items, categories, banners, loading, error } = useMenu();
@@ -477,7 +403,10 @@ export default function HomePage() {
         </section>
       </div>
 
-      <DishDetail item={detail} onClose={() => setDetail(null)} />
+      {/* Guarded at the call site, as in SignatureDishes: the shared sheet
+          reads `dish.*` on render and the local copy this replaced returned
+          null internally. */}
+      {detail && <DishDetail dish={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }

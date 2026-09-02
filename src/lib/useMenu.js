@@ -61,7 +61,13 @@ export function useMenu() {
         const next = [];
         snap.forEach((doc) => {
           const d = doc.data() || {};
-          if (!alive(d)) return;
+          // Uses the shared listability rule. This line previously called a local
+          // helper that was deleted when menu parsing moved to lib/menuItem.js, so
+          // every categories snapshot threw inside this callback. The listener's
+          // error handler is `() => {}`, so the throw was swallowed whole:
+          // `categories` stayed empty forever and the Home page rendered only
+          // 'All dishes'. Invisible to both the production build and the linter.
+          if (!isListable(d)) return;
           next.push({
             id: doc.id,
             name: String(d.name || ''),
@@ -82,7 +88,9 @@ export function useMenu() {
         const next = [];
         snap.forEach((doc) => {
           const d = doc.data() || {};
-          if (!alive(d)) return;
+          // Same fix as the categories listener above — banners were dark for
+          // exactly the same reason.
+          if (!isListable(d)) return;
           if (!d.imageUrl) return;
           next.push({
             id: doc.id,

@@ -829,7 +829,7 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
         },
         handler: async (r) => {
           /*
-           * Nothing is written from the browser here any more.
+           * Nothing is written from the browser here.
            *
            * This used to attach `paymentId` to the order document. That write
            * is refused by firestore.rules — a customer may only touch
@@ -838,9 +838,75 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
            * only because the webhook writes `paymentId` itself, which is also
            * the reason removing it costs nothing.
            *
-           * paymentStatus stays Pending until the signature-verified webhook
-           * flips it: anything a client can set, a client can forge.
+           * paymentStatus stays Pending until a signature-verified server
+           * path flips it: anything a client can set, a client can forge.
+           *
+           * ── Why this now calls the server before showing success ────────
+           *
+           * Razorpay's `handler` firing means the *browser* was told the
+           * payment worked. That is a claim, not a fact — the callback runs in
+           * a page the customer controls. This used to go straight to
+           * `onPlaced`, so the success screen appeared on the strength of that
+           * claim alone. The order was never marked paid by it (the webhook
+           * owns that, and always did), but the customer was told "order
+           * placed" before anything had been checked.
+           *
+           * `verifyRazorpayPayment` is the existing backend verification and
+           * it already does the work: it re-derives the HMAC signature, checks
+           * the caller owns the order, refuses a cancelled one, and — the part
+           * that matters — fetches the payment from Razorpay and compares the
+           * amount actually captured against the order's server-side total. It
+           * refuses outright when RAZORPAY_SECRET is absent. The Flutter app
+           * has called it all along; the website never did.
+           *
+           * The webhook remains the authoritative reconciler, so a customer
+           * whose verification call fails on a flaky network still gets their
+           * order settled a moment later. This gate is about not *claiming*
+           * success before the server agrees.
            */
+          try {
+            const verify = httpsCallable(functions, 'verifyRazorpayPayment');
+            const out = await verify({
+              // Razorpay's signature is over `razorpay_order_id|payment_id`,
+              // so the top-level id must be Razorpay's, not ours. Our
+              // Firestore document id travels in `metadata.orderId`, exactly
+              // as the app sends it.
+              orderId: r.razorpay_order_id,
+              paymentId: r.razorpay_payment_id,
+              signature: r.razorpay_signature,
+              type: 'ORDER',
+              metadata: { orderId: orderDocId },
+            });
+
+            if (out?.data?.success !== true) {
+              // A structured refusal — a cancelled order, most often.
+              setBusy(false);
+              setFatal(
+                out?.data?.message
+                || 'We could not confirm that payment. If money left your account '
+                 + 'it will be refunded. Please contact us before paying again.',
+              );
+              return;
+            }
+          } catch (err) {
+            /*
+             * Verification failed: bad signature, wrong owner, amount short of
+             * the order total, or the gateway unreachable. No success screen
+             * and no cart clear — the order document stays Pending and is
+             * either settled by the webhook or expired by
+             * `expireUnpaidOrders`. Telling the customer it worked here is the
+             * one thing that must not happen.
+             */
+            console.error('[checkout] payment verification failed', err);
+            setBusy(false);
+            setFatal(
+              'We could not verify that payment. Do not pay again yet — if money '
+              + 'left your account we will either complete this order or refund '
+              + 'it. Please contact us with your order number ' + readable + '.',
+            );
+            return;
+          }
+
           await endSession('ORDERED');
           clear();
           setBusy(false);
