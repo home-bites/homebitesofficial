@@ -27,6 +27,16 @@ export function useAppSettings() {
     // admin set rather than a constant that goes stale the day it changes.
     supportPhone: '',
     storeAddress: '',
+    // Service centre, for the distance the delivery charge is priced on.
+    // NaN rather than 0 when unset: 0,0 is a real coordinate in the Atlantic,
+    // and treating "not configured" as a location would price every delivery
+    // as if the kitchen were there.
+    centerLatitude: NaN,
+    centerLongitude: NaN,
+    // The untouched document, so the delivery-fee module can read its own
+    // fields without this hook having to mirror every one of them. Adding a
+    // field to the fee rule must not require editing this file too.
+    raw: {},
     loaded: false,
   });
 
@@ -44,6 +54,9 @@ export function useAppSettings() {
           rainCharge: Number(d.rainCharge) || 0,
           supportPhone: String(d.supportPhone || ''),
           storeAddress: String(d.storeAddress || ''),
+          centerLatitude: Number(d.centerLatitude),
+          centerLongitude: Number(d.centerLongitude),
+          raw: d,
           loaded: true,
         });
       },

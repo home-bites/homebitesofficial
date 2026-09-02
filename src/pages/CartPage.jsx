@@ -245,8 +245,17 @@ export default function CartPage() {
             )}
             {/* Charges set to zero in the dashboard are omitted — a bill listing
                 charges that do not apply reads like something failed to load. */}
+            {/* The distance sits in the label because it is what sets the
+                charge. Before a location is chosen there is no distance and
+                this is the base fare, which the cart says plainly rather than
+                presenting as the final figure. */}
             {totals.deliveryCharge > 0 && (
-              <BillRow label="Delivery" value={inr(totals.deliveryCharge)} />
+              <BillRow
+                label={totals.deliveryDistanceKm !== null
+                  ? `Delivery · ${totals.deliveryDistanceKm} km`
+                  : 'Delivery · base fare'}
+                value={inr(totals.deliveryCharge)}
+              />
             )}
             {totals.rainCharge > 0 && (
               <BillRow label="Rain / peak charge" value={inr(totals.rainCharge)} />

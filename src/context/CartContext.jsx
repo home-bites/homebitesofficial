@@ -24,6 +24,8 @@ export const useCart = () => useContext(CartContext);
  * This value must still match your .env and the dashboard, because it is what
  * a customer is charged in the seconds before settings load.
  */
+import { deliveryFeeConfig, computeDeliveryCharge, haversineKm } from '../lib/deliveryFee';
+
 const FALLBACK_PLATFORM_FEE = Number(import.meta.env.VITE_DELIVERY_FEE ?? 10);
 const STORAGE_KEY = 'homebites.cart.v1';
 
@@ -33,6 +35,21 @@ export function CartProvider({ children }) {
   // set by an admin must survive, and `0 || 10` would quietly become 10.
   const appSettings = useAppSettings();
   const platformFee = appSettings.platformFee ?? FALLBACK_PLATFORM_FEE;
+
+  /*
+   * The delivery pin the customer has chosen, if any.
+   *
+   * Delivery is priced by distance (see lib/deliveryFee.js), so the charge
+   * cannot be known until there is a destination. `setDeliveryPoint` is
+   * called by the address selector and by checkout when the address changes;
+   * until then the quote is the base charge, which is what a delivery inside
+   * the base radius costs and therefore the lowest honest figure to show.
+   *
+   * This is a PREVIEW. `onOrderCreatedVerifyTotals` recomputes the charge
+   * server-side from the order's own coordinates, so a tampered value here
+   * changes what the customer is shown and not what they are charged.
+   */
+  const [deliveryPoint, setDeliveryPoint] = useState(null);
 
   // CartProvider is mounted inside AuthProvider in App.jsx, so this is safe.
   const { user } = useAuth();
@@ -141,10 +158,26 @@ export function CartProvider({ children }) {
     saveRemoteCart(user.uid, lines).then((ok) => setSyncState(ok ? 'synced' : 'error'));
   }, [lines, user]);
 
-  const add = useCallback((item) => {
+  /**
+   * Add a dish, optionally with add-ons.
+   *
+   * `add(item)` keeps working exactly as before — every existing caller passes
+   * one argument and gets one unit of a plain dish.
+   *
+   * Lines are keyed by dish id *plus* an add-on signature, so "Biryani with
+   * extra raita" and plain Biryani are two lines that can be counted and
+   * removed independently. Keying by dish id alone would silently merge them
+   * and charge one price for both.
+   */
+  const add = useCallback((item, opts = {}) => {
+    const addons = Array.isArray(opts.addons) ? opts.addons : [];
+    const qty = Math.max(1, Number(opts.qty) || 1);
+    // Sorted so the same set chosen in a different order is the same line.
+    const sig = addons.map((a) => `${a.name}:${a.price}`).sort().join('|');
+    const lineId = sig ? `${item.id}::${sig}` : item.id;
     setLines((prev) => {
-      const cur = prev[item.id]?.qty || 0;
-      return { ...prev, [item.id]: { item, qty: cur + 1 } };
+      const cur = prev[lineId]?.qty || 0;
+      return { ...prev, [lineId]: { item, qty: cur + qty, addons, lineId } };
     });
   }, []);
 
@@ -169,7 +202,11 @@ export function CartProvider({ children }) {
 
   const totals = useMemo(() => {
     const list = Object.values(lines);
-    const subtotal = list.reduce((s, l) => s + l.item.price * l.qty, 0);
+    // Add-ons are part of what the customer pays for the line. `?? []` keeps
+    // lines saved by an earlier build — which have no `addons` key — working.
+    const lineUnit = (l) =>
+      l.item.price + (l.addons || []).reduce((t, a) => t + (Number(a.price) || 0), 0);
+    const subtotal = list.reduce((s, l) => s + lineUnit(l) * l.qty, 0);
     const count = list.reduce((s, l) => s + l.qty, 0);
 
     let discount = 0;
@@ -200,7 +237,21 @@ export function CartProvider({ children }) {
     const charged = count > 0;
     const taxable = Math.max(0, subtotal - discount);
 
-    const deliveryCharge = charged ? appSettings.deliveryCharge : 0;
+    // Distance from the configured service centre to the customer's pin.
+    // Null when either end is unknown — computeDeliveryCharge then returns the
+    // base charge rather than inventing a distance.
+    const feeCfg = deliveryFeeConfig(appSettings.raw || {});
+    const centreOk = Number.isFinite(appSettings.centerLatitude)
+      && Number.isFinite(appSettings.centerLongitude)
+      && !(appSettings.centerLatitude === 0 && appSettings.centerLongitude === 0);
+    const distanceKm = (deliveryPoint && centreOk)
+      ? haversineKm(
+        appSettings.centerLatitude, appSettings.centerLongitude,
+        deliveryPoint.lat, deliveryPoint.lng,
+      )
+      : null;
+
+    const deliveryCharge = charged ? computeDeliveryCharge(distanceKm, feeCfg) : 0;
     const rainCharge = charged ? appSettings.rainCharge : 0;
     const platform = charged ? platformFee : 0;
     const tax = charged ? (taxable * appSettings.taxRate) / 100 : 0;
@@ -216,10 +267,14 @@ export function CartProvider({ children }) {
       platformFee: +platform.toFixed(2),
       tax: +tax.toFixed(2),
       taxRate: appSettings.taxRate,
+      // Surfaced so checkout can say "4.2 km" beside the charge instead of
+      // presenting a number the customer cannot account for.
+      deliveryDistanceKm: distanceKm === null ? null : +distanceKm.toFixed(2),
       grand: +grand.toFixed(2),
     };
-  }, [lines, coupon, platformFee, appSettings.deliveryCharge,
-      appSettings.rainCharge, appSettings.taxRate]);
+  }, [lines, coupon, platformFee, appSettings.rainCharge, appSettings.taxRate,
+      appSettings.raw, appSettings.centerLatitude, appSettings.centerLongitude,
+      deliveryPoint]);
 
   /**
    * Looks a coupon up by code and validates it against the current subtotal.
@@ -315,11 +370,12 @@ export function CartProvider({ children }) {
 
   const value = useMemo(() => ({
     lines, items: Object.values(lines), totals, deliveryFee: platformFee,
+    deliveryPoint, setDeliveryPoint,
     syncState,
     minimumOrderValue: appSettings.minimumOrderValue,
     add, remove, clear, qtyOf,
     coupon, couponError, couponBusy, applyCoupon, removeCoupon,
-  }), [lines, totals, platformFee, syncState, appSettings.minimumOrderValue, add, remove, clear, qtyOf, coupon, couponError, couponBusy, applyCoupon, removeCoupon]);
+  }), [lines, totals, platformFee, syncState, deliveryPoint, appSettings.minimumOrderValue, add, remove, clear, qtyOf, coupon, couponError, couponBusy, applyCoupon, removeCoupon]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

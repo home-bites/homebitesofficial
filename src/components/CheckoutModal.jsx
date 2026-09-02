@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   addDoc, collection, doc, updateDoc, onSnapshot, serverTimestamp,
@@ -22,9 +22,11 @@ import {
 import { useCart } from '../context/CartContext';
 import AuthPanel from './AuthPanel';
 import MapPicker from './MapPicker';
+import AddressBook from './AddressBook';
 import { useStoreOpen, useFeatureFlags } from '../lib/useStoreOpen';
 import { readCache, writeCache, TTL } from '../lib/localCache';
 import { MAPS_ENABLED } from '../lib/googleMaps';
+import { CONFIRM_METRES } from '../lib/locationPolicy';
 import { useAuth } from '../context/AuthContext';
 
 function Field({ label, hint, error, children }) {
@@ -65,7 +67,7 @@ const inputCls = (bad) =>
          : 'border-brand-primary/15 bg-white focus:border-brand-primary'}`;
 
 export default function CheckoutModal({ open, onClose, onPlaced }) {
-  const { items, totals, add, remove, clear, coupon, couponError, couponBusy, applyCoupon, removeCoupon } = useCart();
+  const { items, totals, add, remove, clear, coupon, couponError, couponBusy, applyCoupon, removeCoupon, setDeliveryPoint } = useCart();
   const { user, profile, isSignedIn, updateProfile, authError } = useAuth();
   const { storeOpen, closedMessage } = useStoreOpen();
   const { couponEnabled } = useFeatureFlags();
@@ -79,9 +81,27 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
   const [busy, setBusy] = useState(false);
   const [fatal, setFatal] = useState('');
 
-  // How the customer pays. Cash is the default while the live Razorpay keyset
-  // is still in review — see ONLINE_ENABLED below.
-  const [payMethod, setPayMethod] = useState('COD');
+  /*
+   * How the customer pays. Nothing is preselected.
+   *
+   * This was `useState('COD')`, so every website customer was defaulted into
+   * cash — on a checkout that ran no eligibility check of any kind. A customer
+   * whose cash payment had been withdrawn in the app simply opened a browser
+   * and carried on, which is how the abuse lock was bypassed in practice.
+   * Requiring an explicit choice also means the eligibility answer below has
+   * somewhere to land before an order exists.
+   */
+  const [payMethod, setPayMethod] = useState('');
+
+  /* Server-side cash-on-delivery eligibility. One answer, shared with the app
+   * and enforced again in the order path — this is the display copy only. */
+  const [codEligible, setCodEligible] = useState(true);
+  const [codMessage, setCodMessage] = useState('');
+
+  /* The server-owned checkout session. A session left open past its window is
+   * swept and counted as an abandoned cash checkout, which is what makes the
+   * three-strike rule enforceable rather than voluntary. */
+  const [sessionId, setSessionId] = useState(null);
 
   // Delivery-area state. `coords` stays null unless the customer chooses to
   // share their location — the pincode gate works without it.
@@ -113,6 +133,44 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
     if (!open || coords) return;
     setSavedLoc(readCache('lastLocation', { maxAgeMs: TTL.LOCATION }));
   }, [open, coords]);
+
+  /* ── The delivery point drives the delivery charge ─────────────────────
+   *
+   * Delivery is priced by distance, so the charge cannot be known until
+   * there is a destination. This is the single place that hands the chosen
+   * point to the cart.
+   *
+   * It is one effect on `coords` rather than a call inside each of the four
+   * places that set it — GPS, the saved point, a pasted Maps link and the
+   * map pin. Wiring each of them separately is how you end up with three
+   * paths that update the fee and a fourth that quietly does not, which is a
+   * customer being quoted ₹20 for an 8 km delivery. Anything that sets
+   * `coords` from here on is priced automatically.
+   *
+   * `coords` is only ever set after `checkCoordinates` has confirmed the
+   * point is inside a service area, so an out-of-area location never reaches
+   * the fee calculation — it clears the point instead, and the charge falls
+   * back to the base fare with checkout blocked by the area error.
+   */
+  /* A location chosen any other way deselects the saved address card, so the
+   * list never shows a tick beside an address the order is not going to. */
+  useEffect(() => {
+    if (!coords) { setSavedSel(null); return; }
+    setSavedSel((sel) => {
+      if (!sel) return sel;
+      const same = Math.abs(sel.lat - coords.lat) < 1e-7
+        && Math.abs(sel.lng - coords.lng) < 1e-7;
+      return same ? sel : null;
+    });
+  }, [coords]);
+
+  useEffect(() => {
+    setDeliveryPoint(
+      coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng)
+        ? { lat: coords.lat, lng: coords.lng }
+        : null,
+    );
+  }, [coords, setDeliveryPoint]);
 
   /** Confirm the saved point, re-checking coverage in case areas changed. */
   async function useSavedLocation() {
@@ -184,7 +242,11 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
    * coarser than ACCURACY_LIMIT_M is rejected with an explanation rather than
    * quietly accepted.
    */
-  const ACCURACY_LIMIT_M = 150;
+  // Tiers, not a single limit. Imported from the shared policy module so the
+  // website and the app cannot drift: 50 m is accepted silently, 50-150 m is
+  // usable once the customer confirms the pin, and anything coarser is
+  // refused outright.
+  const ACCURACY_LIMIT_M = CONFIRM_METRES;
 
   async function useMyLocation() {
     setGeoBusy(true); setGeoMsg(''); setAreaError('');
@@ -266,6 +328,54 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
     setGeoBusy(false);
   }
 
+  /* ── Saved addresses ───────────────────────────────────────────────────
+   *
+   * Choosing a saved address is the same act as dropping a pin: it sets a
+   * delivery point, so it runs the same coverage check and lands in the same
+   * `coords` state, which is what feeds the distance-based delivery charge.
+   * Anything that bypassed `coords` here would be quoted the base fare.
+   *
+   * The saved `addressLine` also prefills the door detail, because retyping
+   * an address you have already saved is the reason people abandon a
+   * checkout.
+   */
+  // The id *and* the point, so the deselect check below can compare the two.
+  // Comparing `coords.source` alone is not enough: a fresh map pin and a saved
+  // address placed by pin both carry 'maps_pin', so a customer who dropped a
+  // new pin would still see a tick on the old saved card.
+  const [savedSel, setSavedSel] = useState(null);
+  const savedAddressId = savedSel?.id || '';
+
+  async function useSavedAddress(a) {
+    if (!a || !a.usable) return;
+    setMapsError(''); setAreaError(''); setGeoMsg('');
+    setGeoBusy(true);
+    try {
+      const cover = await checkCoordinates(a.latitude, a.longitude);
+      if (!cover.ok) {
+        // The address is saved and real; coverage may simply have changed
+        // since. `coords` stays cleared so nothing is priced or ordered
+        // against a point we cannot deliver to.
+        setCoords(null);
+        setSavedSel(null);
+        setAreaError(cover.error);
+        return;
+      }
+      setSavedSel({ id: a.id, lat: a.latitude, lng: a.longitude });
+      setCoords({
+        lat: a.latitude,
+        lng: a.longitude,
+        accuracy: a.accuracyM ?? null,
+        source: a.source === 'customer_maps_pin' ? 'maps_pin' : (a.source || 'saved_address'),
+      });
+      const line = [a.houseNumber, a.addressLine].filter(Boolean).join(', ');
+      if (line) setForm((f) => ({ ...f, doorInfo: line }));
+      setGeoMsg(cover.areaName ? `Delivering to ${cover.areaName}.` : 'Address set.');
+    } finally {
+      setGeoBusy(false);
+    }
+  }
+
   /**
    * Commit the point the customer chose on the map.
    *
@@ -295,7 +405,158 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
     setGeoBusy(false);
   }
 
+  /* Ask the server whether this customer may pay cash, whenever the answer
+   * could have changed. The website previously never asked at all. */
+  useEffect(() => {
+    if (!open || !functions || !isSignedIn || !items.length) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await httpsCallable(functions, 'checkCodEligibility')({
+          subtotal: totals.subtotal,
+          grandTotal: totals.grand,
+          isTakeaway: false,
+          ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
+        });
+        if (cancelled) return;
+        setCodEligible(res?.data?.eligible !== false);
+        setCodMessage(res?.data?.message || '');
+      } catch (e) {
+        // Fail open on a transport error — the order path re-checks
+        // server-side, so a genuinely blocked customer is still refused there.
+        console.warn('[checkout] checkCodEligibility failed', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, isSignedIn, items.length, totals.subtotal, totals.grand, coords]);
+
+  /* Open a session when the modal opens, and re-open it when the customer
+   * switches to or from cash — only a cash session counts as an abandonment,
+   * and beginCheckout supersedes the previous one without counting it. */
+  useEffect(() => {
+    if (!open || !isSignedIn || !items.length) return;
+    beginSession(payMethod || 'Unknown');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isSignedIn, items.length > 0, payMethod]);
+
+  /* Closing the modal without ordering is an abandonment. The server sweeps
+   * unclosed sessions after fifteen minutes regardless, so this is only about
+   * updating the customer's standing promptly. */
+  useEffect(() => {
+    if (open) return undefined;
+    endSession('ABANDONED');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  /* ────────────────────────────────────────────────────────────────────
+   * Checkout sessions and cash eligibility
+   *
+   * `beginCheckout` opens a server-owned session; a session still open when
+   * its window closes is swept and, if cash was selected, counted as an
+   * abandoned COD checkout. That sweep is what makes the three-strike rule
+   * enforceable — the previous scheme incremented a counter from the mobile
+   * app's back button only, so the website never participated and a client
+   * that stayed quiet was never counted at all.
+   * ──────────────────────────────────────────────────────────────────── */
+
+  async function beginSession(method) {
+    if (!functions || !isSignedIn) return;
+    try {
+      const fn = httpsCallable(functions, 'beginCheckout');
+      const res = await fn({ paymentMethod: method || 'Unknown' });
+      if (res?.data?.checkoutSessionId) setSessionId(res.data.checkoutSessionId);
+    } catch (e) {
+      // Never block checkout on this. A session that fails to open simply
+      // means this attempt is not counted — the safe direction to fail.
+      console.warn('[checkout] beginCheckout failed', e);
+    }
+  }
+
+  async function endSession(outcome) {
+    if (!functions || !sessionId) return;
+    const id = sessionId;
+    setSessionId(null);
+    try {
+      await httpsCallable(functions, 'endCheckout')({
+        checkoutSessionId: id, outcome,
+      });
+    } catch (e) {
+      console.warn('[checkout] endCheckout failed', e);
+    }
+  }
+
+  /**
+   * A failed or dismissed payment cancels the order.
+   *
+   * The old copy — "Your order is saved, you can pay again" — was untrue in
+   * both directions: nothing on this site let the customer pay again, and the
+   * order was cancelled by the sweeper twenty minutes later anyway. Now it is
+   * cancelled immediately, server-side, with the stock and coupon redemption
+   * it consumed handed back.
+   *
+   * `cancelUnpaidPurchase` asks Razorpay whether money actually moved before
+   * cancelling. `payment.failed` is a client-side signal that fires on a
+   * dropped connection as readily as on a decline, so acting on it alone
+   * would cancel orders the customer has genuinely paid for.
+   */
+  async function failOrder(orderDocId, reason, gatewayMessage) {
+    setBusy(false);
+    let alreadyPaid = false;
+    try {
+      const res = await httpsCallable(functions, 'cancelUnpaidPurchase')({
+        purchaseId: orderDocId,
+        kind: 'ORDER',
+        reason,
+        ...(sessionId ? { checkoutSessionId: sessionId } : {}),
+      });
+      alreadyPaid = res?.data?.alreadyPaid === true;
+    } catch (e) {
+      console.error('[checkout] cancelUnpaidPurchase failed', e);
+    }
+    setSessionId(null);
+
+    if (alreadyPaid) {
+      setFatal(
+        'Your payment is being confirmed — please do not pay again. '
+        + 'We will update your order shortly.',
+      );
+      return;
+    }
+
+    // The cart is deliberately NOT cleared. Re-ordering should be one tap,
+    // and clearing it was what made a failed payment feel like losing the
+    // basket as well as the order.
+    setFatal(
+      (gatewayMessage ? gatewayMessage + ' ' : '')
+      + 'The order was cancelled because payment did not complete. '
+      + 'Your items are still in your bag.',
+    );
+  }
+
+  /* Double-submit guard.
+   *
+   * `busy` disables the button, but `setBusy(true)` does not run until after
+   * the coverage re-check and the cash-eligibility re-check — two network
+   * round trips during which the button is live. React state is asynchronous
+   * anyway, so even moving `setBusy` earlier would not close the gap; a ref
+   * flips synchronously and is the only thing that can.
+   *
+   * It matters because nothing downstream collapses a repeat: the app's
+   * `placeOrder` mints a fresh idempotency token per call, and the website
+   * writes its order document directly. Two clicks produce two orders. */
+  const submitting = useRef(false);
+
   async function placeOrder() {
+    if (submitting.current) return;
+    submitting.current = true;
+    try {
+      await runPlaceOrder();
+    } finally {
+      submitting.current = false;
+    }
+  }
+
+  async function runPlaceOrder() {
     setFatal(''); setAreaError('');
 
     // Checked here as well as on the menu. Someone who filled a cart before
@@ -357,7 +618,52 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
       return;
     }
 
+    // Nothing is preselected any more, so an unanswered choice is a real state.
+    if (!payMethod) {
+      setFatal('Please choose how you would like to pay.');
+      return;
+    }
+
+    // The server decides, and decides again in the order path. This check is
+    // here so the customer gets a sentence rather than a rejected write.
+    if (payMethod === 'COD' && !codEligible) {
+      setFatal(codMessage || 'Cash on delivery isn\'t available for this order.');
+      return;
+    }
+
     if (!db || !functions || !user) { setFatal('Please sign in again.'); return; }
+
+    /* Re-ask at the moment of submission.
+     *
+     * The cached verdict above came from an effect that last ran against a
+     * possibly different basket, and cash can be withdrawn between the two —
+     * a value limit crossed, the global switch turned off, a block earned by
+     * abandoning a checkout in another tab. Without this the customer gets a
+     * confirmation and then a cancellation a few seconds later.
+     *
+     * Still advisory. `onOrderCreatedVerifyTotals` re-evaluates the same rule
+     * against a basket it re-prices from the menu, and that is what binds.
+     * Unreachable means proceed: refusing here on a network error would block
+     * a customer who is entitled to pay cash, and the server still catches
+     * the case that matters. */
+    if (payMethod === 'COD') {
+      try {
+        const res = await httpsCallable(functions, 'checkCodEligibility')({
+          subtotal: totals.subtotal,
+          grandTotal: totals.grand,
+          isTakeaway: false,
+          ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
+        });
+        if (res?.data?.eligible === false) {
+          setCodEligible(false);
+          setCodMessage(res.data.message || '');
+          setFatal(res.data.message || 'Cash on delivery isn\'t available for this order.');
+          return;
+        }
+      } catch (e) {
+        console.warn('[checkout] final checkCodEligibility failed', e);
+      }
+    }
 
     setBusy(true);
     let orderDocId = null;
@@ -375,17 +681,32 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
       const phone = normalisePhone(form.phone);
       const readable = 'WEB' + Date.now().toString().slice(-8);
 
-      const orderItems = items.map(({ item, qty }) => ({
-        menuItemId: item.id,
-        itemId: item.id,
-        name: item.name,
-        price: item.price,
-        imageUrl: item.image || '',
-        quantity: qty,
-        selectedAddons: [],
-        notes: '',
-        total: +(item.price * qty).toFixed(2),
-      }));
+      const orderItems = items.map(({ item, qty, addons }) => {
+        // `selectedAddons` already existed on the order schema and was always
+        // written empty. It is now filled from the line, in the shape the
+        // menu document stores add-ons, so the kitchen ticket and the admin
+        // order view show what was actually ordered.
+        const chosen = Array.isArray(addons) ? addons : [];
+        const addonTotal = chosen.reduce((t, a) => t + (Number(a.price) || 0), 0);
+        return {
+          menuItemId: item.id,
+          itemId: item.id,
+          name: item.name,
+          // The dish price stays the dish price. The server re-prices this
+          // line from `menuItems` and would flag a mismatch if the add-on
+          // money were folded in here.
+          price: item.price,
+          imageUrl: item.image || '',
+          quantity: qty,
+          selectedAddons: chosen.map((a) => ({
+            name: String(a.name || ''),
+            price: Number(a.price) || 0,
+            ...(a.isVeg === undefined ? {} : { isVeg: a.isVeg !== false }),
+          })),
+          notes: '',
+          total: +((item.price + addonTotal) * qty).toFixed(2),
+        };
+      });
 
       // 1. Persist the order first. The webhook reconciles against this
       //    document, so it has to exist before Razorpay is involved.
@@ -504,23 +825,23 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
         notes: { orderId: orderDocId },
         theme: { color: '#0B4D3B' },
         modal: {
-          ondismiss: () => {
-            setBusy(false);
-            setFatal('Payment cancelled. Your order is saved — you can pay again.');
-          },
+          ondismiss: () => { failOrder(orderDocId, 'PAYMENT_DISMISSED'); },
         },
         handler: async (r) => {
-          // Only the payment reference is written from the browser.
-          // paymentStatus stays Pending until the signature-verified webhook
-          // flips it — anything a client can set, a client can forge.
-          try {
-            await updateDoc(doc(db, 'orders', orderDocId), {
-              paymentId: r.razorpay_payment_id,
-              updatedAt: serverTimestamp(),
-            });
-          } catch (e) {
-            console.error('[order] could not attach payment id', e);
-          }
+          /*
+           * Nothing is written from the browser here any more.
+           *
+           * This used to attach `paymentId` to the order document. That write
+           * is refused by firestore.rules — a customer may only touch
+           * `status`, `cancellationReason` and `updatedAt` — so it failed
+           * silently into the catch on every single order. It was harmless
+           * only because the webhook writes `paymentId` itself, which is also
+           * the reason removing it costs nothing.
+           *
+           * paymentStatus stays Pending until the signature-verified webhook
+           * flips it: anything a client can set, a client can forge.
+           */
+          await endSession('ORDERED');
           clear();
           setBusy(false);
           onPlaced?.({ docId: orderDocId, orderId: readable, paymentId: r.razorpay_payment_id });
@@ -528,8 +849,7 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
       });
 
       rzp.on('payment.failed', (resp) => {
-        setBusy(false);
-        setFatal(resp?.error?.description || 'Payment failed. Please try again.');
+        failOrder(orderDocId, 'PAYMENT_FAILED', resp?.error?.description);
       });
 
       rzp.open();
@@ -662,6 +982,20 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
                         {savedLoc.areaName ? ` — ${savedLoc.areaName}` : ''}
                       </button>
                     )}
+
+                    {/* Saved addresses first: a returning customer should be
+                        one tap from ordering, not asked to re-share their
+                        location every time. */}
+                    <div className="mb-3">
+                      <AddressBook
+                        selectedId={savedAddressId}
+                        onSelect={useSavedAddress}
+                      />
+                    </div>
+
+                    <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-wide text-brand-dark/40">
+                      Or set a location now
+                    </p>
 
                     <button
                       type="button"
@@ -867,9 +1201,34 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
                         listed as ₹0.00, which reads like a mistake. */}
                     {totals.deliveryCharge > 0 && (
                       <div className="flex justify-between py-1 font-sans text-sm">
-                        <span className="text-brand-dark/60">Delivery charge</span>
+                        <span className="text-brand-dark/60">
+                          Delivery charge
+                          {/* The distance is shown beside the charge because
+                              the charge depends on it. A customer who sees
+                              ₹36 where they saw ₹20 last week needs to be
+                              able to account for it without asking. Until a
+                              location is chosen there is no distance, and the
+                              figure shown is the base fare — say so rather
+                              than implying it is final. */}
+                          {totals.deliveryDistanceKm !== null && (
+                            <span className="ml-1.5 text-brand-dark/45">
+                              · {totals.deliveryDistanceKm} km
+                            </span>
+                          )}
+                          {totals.deliveryDistanceKm === null && (
+                            <span className="ml-1.5 text-brand-dark/45">
+                              · base fare
+                            </span>
+                          )}
+                        </span>
                         <span>{inr(totals.deliveryCharge)}</span>
                       </div>
+                    )}
+                    {totals.deliveryCharge > 0 && totals.deliveryDistanceKm === null && (
+                      <p className="pb-1 font-sans text-[11px] leading-relaxed text-brand-dark/45">
+                        Set your delivery location to see the exact charge for
+                        your distance.
+                      </p>
                     )}
                     {totals.rainCharge > 0 && (
                       <div className="flex justify-between py-1 font-sans text-sm">
@@ -920,21 +1279,37 @@ export default function CheckoutModal({ open, onClose, onPlaced }) {
                     {[
                       ['COD', 'Cash on delivery', Wallet],
                       ['ONLINE', 'Pay online', ShieldCheck],
-                    ].map(([val, label, Icon]) => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => setPayMethod(val)}
-                        className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3
-                                    font-sans text-[13px] font-bold transition
-                                    ${payMethod === val
-                                      ? 'border-brand-primary bg-brand-primary/5 text-brand-primary'
-                                      : 'border-brand-primary/15 text-brand-dark/60 hover:border-brand-primary/40'}`}
-                      >
-                        <Icon className="h-4 w-4" /> {label}
-                      </button>
-                    ))}
+                    ].map(([val, label, Icon]) => {
+                      const blocked = val === 'COD' && !codEligible;
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          disabled={blocked}
+                          onClick={() => setPayMethod(val)}
+                          className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3
+                                      font-sans text-[13px] font-bold transition
+                                      disabled:cursor-not-allowed disabled:opacity-45
+                                      ${payMethod === val
+                                        ? 'border-brand-primary bg-brand-primary/5 text-brand-primary'
+                                        : 'border-brand-primary/15 text-brand-dark/60 hover:border-brand-primary/40'}`}
+                        >
+                          <Icon className="h-4 w-4" /> {label}
+                        </button>
+                      );
+                    })}
                   </div>
+                )}
+
+                {/* The server writes this sentence. It knows whether the block
+                    is a support action, an abuse lock with hours left, a value
+                    limit or a coverage gap; a hardcoded string here could only
+                    ever describe one of them, and would drift from the app's. */}
+                {!codEligible && codMessage && (
+                  <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2
+                                font-sans text-[11px] leading-relaxed text-amber-900">
+                    {codMessage}
+                  </p>
                 )}
 
                 <button

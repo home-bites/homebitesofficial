@@ -1,33 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
+import {
+  normalizeMenuItem, isListable, sortMenuItems, sortByDisplayOrder,
+} from './menuItem';
 
 /**
  * Live menu, categories and banners straight from Firestore.
  *
- * Extracted so the customer Home page and the public SignatureDishes section
- * read the same collections through the same normalisation. SignatureDishes
- * keeps its own copy for now — it works, and rewriting a working module to
- * share a hook is the kind of change that breaks a live storefront for no
- * visible gain. This one is for the new pages.
+ * Parsing lives in `lib/menuItem.js` and is shared with `SignatureDishes`.
+ * This hook used to carry its own copy, which is how the same dish came to be
+ * orderable on one page and sold out on another, and why the rich fields an
+ * admin enters — ingredients, allergens, add-ons — reached only half the site.
  *
- * Prices mirror MenuItemModel in the app, tier for tier: offerPrice, then
- * discountAmount, then discountPercentage. A website that prices a discounted
- * dish differently from the app is a support call, not a rounding difference.
+ * Neither listener gates the other: a banner collection that fails to load
+ * must not hide the menu.
  */
-
-function effectivePrice(d) {
-  const base = Number(d.price) || 0;
-  const offer = Number(d.offerPrice) || 0;
-  const dAmt = Number(d.discountAmount) || 0;
-  const dPct = Number(d.discountPercentage) || 0;
-  if (offer > 0 && offer < base) return offer;
-  if (dAmt > 0 && dAmt < base) return base - dAmt;
-  if (dPct > 0 && dPct < 100) return base - (base * (dPct / 100));
-  return base;
-}
-
-const alive = (d) => d.isDeleted !== true;
 
 export function useMenu() {
   const [items, setItems] = useState([]);
@@ -51,27 +39,13 @@ export function useMenu() {
         const next = [];
         snap.forEach((doc) => {
           const d = doc.data() || {};
-          if (!alive(d)) return;
-          const base = Number(d.price) || 0;
-          const price = effectivePrice(d);
-          next.push({
-            id: doc.id,
-            name: String(d.name || ''),
-            description: String(d.description || ''),
-            imageUrl: String(d.imageUrl || d.image || ''),
-            price,
-            originalPrice: base,
-            hasDiscount: price < base,
-            // categoryId holds the category *name* on some documents rather
-            // than the doc id — a mismatch that has bitten this project before.
-            // Both are kept so the filter can match on either.
-            categoryId: String(d.categoryId || ''),
-            foodType: String(d.foodType || ''),
-            isAvailable: d.isAvailable !== false,
-            rating: Number(d.rating) || 0,
-          });
+          // Deleted and hidden are both "not on the menu". Hidden used to be
+          // ignored here, so a dish an admin had taken down stayed listed and
+          // orderable on every page this hook feeds.
+          if (!isListable(d)) return;
+          next.push(normalizeMenuItem(doc.id, d));
         });
-        setItems(next);
+        setItems(sortMenuItems(next));
         setLoading(false);
       },
       (e) => {
@@ -92,11 +66,12 @@ export function useMenu() {
             id: doc.id,
             name: String(d.name || ''),
             imageUrl: String(d.imageUrl || ''),
-            displayOrder: Number(d.displayOrder) || 0,
+            // null, not 0. A category with no order set must sort after the
+            // ones an admin actually placed, not ahead of them.
+            displayOrder: Number.isFinite(Number(d.displayOrder)) ? Number(d.displayOrder) : null,
           });
         });
-        next.sort((a, b) => a.displayOrder - b.displayOrder);
-        setCategories(next);
+        setCategories(sortByDisplayOrder(next));
       },
       () => {},
     );
@@ -113,11 +88,10 @@ export function useMenu() {
             id: doc.id,
             imageUrl: String(d.imageUrl),
             title: String(d.title || ''),
-            displayOrder: Number(d.displayOrder) || 0,
+            displayOrder: Number.isFinite(Number(d.displayOrder)) ? Number(d.displayOrder) : null,
           });
         });
-        next.sort((a, b) => a.displayOrder - b.displayOrder);
-        setBanners(next);
+        setBanners(sortByDisplayOrder(next));
       },
       () => {},
     );

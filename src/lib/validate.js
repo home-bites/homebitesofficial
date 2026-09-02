@@ -72,8 +72,7 @@ export function validateName(raw) {
  * mid-checkout with an unexplained permission error).
  */
 export function validatePhone(raw) {
-  const d = String(raw || '').replace(/\D/g, '');
-  const local = d.length === 12 && d.startsWith('91') ? d.slice(2) : d;
+  const local = normalisePhone(raw);
 
   if (!local) return fail('Please enter your mobile number.');
   if (local.length !== 10) return fail('Enter a 10-digit mobile number.');
@@ -90,10 +89,28 @@ export function validatePhone(raw) {
   return ok;
 }
 
-/** Strips formatting to the bare 10 digits for storage. */
+/**
+ * Strips formatting to the bare 10 digits for storage.
+ *
+ * The ladder below accepts the four shapes customers actually type. It used
+ * to handle only the 12-digit "91…" form, which meant "091-9059928889" — a
+ * real number, written the way a lot of people write it — was refused at the
+ * form, and would have been stored as thirteen digits and rejected by
+ * `isValidPhone()` in firestore.rules if it ever got through.
+ *
+ * Anything that does not match a known prefix keeps its full length, so the
+ * ten-digit check downstream refuses it rather than a long paste being
+ * truncated into something that looks valid.
+ *
+ * Kept deliberately in step with `Validators.normalisePhone` in
+ * customer_app/lib/core/form_validators.dart.
+ */
 export const normalisePhone = (raw) => {
   const d = String(raw || '').replace(/\D/g, '');
-  return d.length === 12 && d.startsWith('91') ? d.slice(2) : d;
+  if (d.length === 13 && d.startsWith('091')) return d.slice(3);
+  if (d.length === 12 && d.startsWith('91')) return d.slice(2);
+  if (d.length === 11 && d.startsWith('0')) return d.slice(1);
+  return d;
 };
 
 /* ── address ──────────────────────────────────────────────────────────── */

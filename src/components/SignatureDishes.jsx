@@ -6,6 +6,8 @@ import Container from '../common/Container';
 import { db, isConfigured } from '../lib/firebase';
 import { inr } from '../lib/format';
 import { useCart } from '../context/CartContext';
+import DishDetail from './DishDetail';
+import { normalizeMenuItem, isListable, sortMenuItems } from '../lib/menuItem';
 import { useStoreOpen } from '../lib/useStoreOpen';
 import { readCache, writeCache, TTL } from '../lib/localCache';
 
@@ -16,7 +18,17 @@ function FoodMark({ type }) {
     Egg: { ring: 'border-amber-500', dot: 'bg-amber-500', Icon: Egg, label: 'Contains egg' },
     Veg: { ring: 'border-green-700', dot: 'bg-green-700', Icon: Leaf, label: 'Vegetarian' },
   };
-  const { ring, dot, Icon, label } = map[type] || map.Veg;
+  // No mark at all when the dish carries no food-type data.
+  //
+  // This used to fall back to `map.Veg`, so a dish an admin had not classified
+  // was shown a green vegetarian mark. That is not a cosmetic default: it is
+  // an affirmative claim about food, made on no evidence, to customers who
+  // may be vegetarian for religious or ethical reasons. Showing nothing is
+  // honest; the fix for a missing mark is to set the food type in the
+  // dashboard, which is now the only thing that produces one.
+  const entry = map[type];
+  if (!entry) return null;
+  const { ring, dot, Icon, label } = entry;
   return (
     <span className={`inline-flex h-4 w-4 items-center justify-center rounded-[3px] border-2 ${ring}`} title={label}>
       <span className={`h-2 w-2 rounded-full ${dot}`} />
@@ -26,7 +38,7 @@ function FoodMark({ type }) {
   );
 }
 
-function DishCard({ item, qty, onAdd, onRemove, index, storeOpen = true }) {
+function DishCard({ item, qty, onAdd, onRemove, onOpen, index, storeOpen = true }) {
   const discounted = item.price < item.originalPrice;
   // A closed kitchen and a sold-out dish both mean "can't order this now",
   // but they read differently to a customer, so the badge distinguishes them.
@@ -74,9 +86,17 @@ function DishCard({ item, qty, onAdd, onRemove, index, storeOpen = true }) {
       <div className="flex flex-1 flex-col p-5">
         <div className="mb-1.5 flex items-start gap-2">
           <span className="mt-1"><FoodMark type={item.foodType} /></span>
-          <h3 className="font-display text-base font-bold leading-snug text-brand-dark">
+          {/* The name opens the full dish. A button rather than a click
+              handler on the card, so it is reachable by keyboard and does not
+              swallow taps meant for the add/remove controls below. */}
+          <button
+            type="button"
+            onClick={() => onOpen(item)}
+            className="text-left font-display text-base font-bold leading-snug text-brand-dark
+                       underline-offset-4 transition hover:underline"
+          >
             {item.name}
-          </h3>
+          </button>
         </div>
 
         {item.description && (
@@ -134,6 +154,8 @@ function DishCard({ item, qty, onAdd, onRemove, index, storeOpen = true }) {
 export default function SignatureDishes() {
   const { add, remove, qtyOf } = useCart();
   const { storeOpen, closedMessage } = useStoreOpen();
+  // The dish whose full detail sheet is open, or null.
+  const [openDish, setOpenDish] = useState(null);
   // Seeded from localStorage so the menu is on screen before Firestore has
   // even connected. The network read below still runs and overwrites this —
   // the cache buys the first frame, not the truth.
@@ -203,53 +225,15 @@ export default function SignatureDishes() {
         });
         cats.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
 
-        const mapped = itemSnap.docs.map((d) => {
-          const x = d.data();
-          const base = Number(x.price) || 0;
-          const offer = Number(x.offerPrice) || 0;
-          const dAmt = Number(x.discountAmount) || 0;
-          const dPct = Number(x.discountPercentage) || 0;
-
-          // Mirrors MenuItemModel.fromFirestore so the website never shows a
-          // different price from the app for the same dish.
-          let price = base;
-          if (offer > 0 && offer < base) price = offer;
-          else if (dAmt > 0 && dAmt < base) price = base - dAmt;
-          else if (dPct > 0 && dPct < 100) price = base - (base * dPct) / 100;
-
-          const outOfStock =
-            (x.isAvailable !== undefined ? !x.isAvailable : x.outOfStock === true) ||
-            (x.trackInventory === true && (Number(x.stockQuantity) || 0) <= 0);
-
-          return {
-            id: d.id,
-            name: x.name || 'Dish',
-            description: x.description || '',
-            price: +price.toFixed(2),
-            originalPrice: base,
-            image: x.imageUrl || x.image || x.thumbnail || x.photo || '',
-            categoryId: x.categoryId || '',
-            // Display label, with a friendly fallback.
-            category:
-              catNames[x.categoryId]
-              || catNames[String(x.categoryId || '').trim().toLowerCase()]
-              || 'Signature',
-            // The real category name, or '' when the dish has none. Kept
-            // separate so the chip join below cannot match a dish on the
-            // word 'Signature' and invent a category nobody created.
-            categoryNameRaw: String(
-              x.categoryName
-                || catNames[x.categoryId]
-                || catNames[String(x.categoryId || '').trim().toLowerCase()]
-                || '',
-            ).trim(),
-            foodType: x.foodType || x.type || (x.isVeg === false ? 'Non-Veg' : 'Veg'),
-            hidden: x.isHidden === true || x.isDeleted === true || x.isActive === false,
-            available: !(x.isHidden === true || x.isDeleted === true || x.isActive === false || outOfStock),
-          };
-        }).filter((i) => !i.hidden);
-        // Soft-delete is filtered in JS, not with where('isDeleted','!=',true):
-        // a Firestore != query silently drops documents that lack the field.
+        // One parser, shared with useMenu — see lib/menuItem.js. This block
+        // used to be a second, divergent copy: it understood the rich fields
+        // and useMenu did not, so ingredients, allergens and add-ons reached
+        // this section of the site and nowhere else.
+        const mapped = sortMenuItems(
+          itemSnap.docs
+            .filter((d) => isListable(d.data() || {}))
+            .map((d) => normalizeMenuItem(d.id, d.data() || {}, catNames)),
+        );
 
         setItems(mapped);
 
@@ -273,7 +257,7 @@ export default function SignatureDishes() {
             (i) =>
               i.categoryId === c.id ||
               norm(i.categoryId) === norm(c.name) ||
-              norm(i.categoryNameRaw) === norm(c.name),
+              norm(i.categoryName) === norm(c.name),
           ),
         );
 
@@ -321,7 +305,7 @@ export default function SignatureDishes() {
       (i) =>
         i.categoryId === activeCat ||
         String(i.categoryId || '').trim().toLowerCase() === wanted ||
-        String(i.categoryNameRaw || '').trim().toLowerCase() === wanted,
+        String(i.categoryName || '').trim().toLowerCase() === wanted,
     );
   }, [items, activeCat, categories]);
 
@@ -456,11 +440,18 @@ export default function SignatureDishes() {
                 qty={qtyOf(item.id)}
                 onAdd={add}
                 onRemove={remove}
+                onOpen={setOpenDish}
               />
             ))}
           </div>
         )}
       </Container>
+
+      {/* Rendered from the same parsed item the grid holds, so the sheet can
+          never disagree with the card that opened it. */}
+      {openDish && (
+        <DishDetail dish={openDish} onClose={() => setOpenDish(null)} />
+      )}
     </section>
   );
 }
