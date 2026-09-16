@@ -2,22 +2,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Receipt, LogIn, LogOut, UserRound, ChevronDown } from 'lucide-react';
 import logo from '../assets/logo.webp';
-import AuthModal from './AuthModal';
-import { useAuth } from '../context/AuthContext';
+// import AuthModal from './AuthModal';
+// import { useAuth } from '../context/AuthContext';
+import { GooglePlayButton, AppStoreButton } from '../common/AppStoreBadges';
 
 const Navbar = ({ onTrackOrder }) => {
-  const { isSignedIn, profile, user, signOut } = useAuth();
-  // The sign-in dialog. This button used to call signInWithGoogle directly,
-  // which skipped the choice entirely and jumped to the Google account
-  // chooser — leaving no way to use an email and password.
-  const [authOpen, setAuthOpen] = useState(false);
+  // Login / auth features commented out as requested. Official site is showcase only.
+  // const { isSignedIn, profile, user, signOut } = useAuth();
+  // const [authOpen, setAuthOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const profileRef = useRef(null);
+  // const [profileOpen, setProfileOpen] = useState(false);
+  // const profileRef = useRef(null);
 
-  // Close the profile menu on an outside click or Escape. Without this it
-  // stays open behind the checkout sheet and intercepts taps.
+  // Close the profile menu on an outside click or Escape (commented out with auth)
+  /*
   useEffect(() => {
     if (!profileOpen) return;
     const onDown = (e) => {
@@ -31,6 +30,7 @@ const Navbar = ({ onTrackOrder }) => {
       document.removeEventListener('keydown', onKey);
     };
   }, [profileOpen]);
+  */
 
   useEffect(() => {
     const handleScroll = () => {
@@ -143,75 +143,34 @@ const Navbar = ({ onTrackOrder }) => {
 
             <span className="text-white/40 select-none text-xl lg:text-2xl">|</span>
 
-            {/* Account / orders. Signing in here creates the same Firebase
-                account the mobile app will use, so nothing is lost at launch. */}
-            {isSignedIn ? (
-              /* Profile menu. Signing out used to be impossible from the site —
-                 once you'd signed in with Google there was no way back out,
-                 which matters on a shared or borrowed device. */
-              <div className="relative" ref={profileRef}>
-                <button
-                  onClick={() => setProfileOpen((v) => !v)}
-                  aria-haspopup="menu"
-                  aria-expanded={profileOpen}
-                  className="flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2
-                             font-sans text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/20"
-                >
-                  {user?.photoURL ? (
-                    <img src={user.photoURL} alt="" className="h-6 w-6 rounded-full object-cover" />
-                  ) : (
-                    <UserRound className="h-4 w-4" />
-                  )}
-                  <span className="max-w-[7rem] truncate">
-                    {(profile?.firstName || user?.displayName || 'Account').split(' ')[0]}
-                  </span>
-                  <ChevronDown className={`h-3.5 w-3.5 transition ${profileOpen ? 'rotate-180' : ''}`} />
-                </button>
+            {/*
+              Account / sign-in features commented out as requested.
+              Official site is presentation only; orders and accounts are on mobile apps.
 
-                {profileOpen && (
-                  <div
-                    role="menu"
-                    className="absolute right-0 z-50 mt-2 w-60 overflow-hidden rounded-2xl border
-                               border-brand-primary/10 bg-white shadow-2xl"
+              {isSignedIn ? (
+                <div className="relative" ref={profileRef}>
+                  <button
+                    onClick={() => setProfileOpen((v) => !v)}
+                    className="flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 font-sans text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/20"
                   >
-                    <div className="border-b border-brand-primary/10 px-4 py-3">
-                      <p className="truncate font-sans text-sm font-bold text-brand-dark">
-                        {profile?.name || user?.displayName || 'Signed in'}
-                      </p>
-                      {user?.email && (
-                        <p className="truncate font-sans text-xs text-brand-dark/50">{user.email}</p>
-                      )}
-                    </div>
+                    ...
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setAuthOpen(true)}
+                  className="flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 font-sans text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/20"
+                >
+                  <LogIn className="h-4 w-4" /> Sign in
+                </button>
+              )}
+            */}
 
-                    <button
-                      role="menuitem"
-                      onClick={() => { setProfileOpen(false); onTrackOrder?.(); }}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left font-sans text-sm
-                                 font-semibold text-brand-dark transition hover:bg-brand-offwhite"
-                    >
-                      <Receipt className="h-4 w-4 text-brand-primary" /> Track my orders
-                    </button>
-
-                    <button
-                      role="menuitem"
-                      onClick={() => { setProfileOpen(false); signOut(); }}
-                      className="flex w-full items-center gap-3 border-t border-brand-primary/10 px-4 py-3
-                                 text-left font-sans text-sm font-semibold text-red-600 transition hover:bg-red-50"
-                    >
-                      <LogOut className="h-4 w-4" /> Sign out
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <button
-                onClick={() => setAuthOpen(true)}
-                className="flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2
-                           font-sans text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/20"
-              >
-                <LogIn className="h-4 w-4" /> Sign in
-              </button>
-            )}
+            {/* Professional Google Play & Apple App Store download buttons */}
+            <div className="flex items-center gap-2.5">
+              <GooglePlayButton size="small" />
+              <AppStoreButton size="small" />
+            </div>
           </div>
 
           {/* Mobile Menu Toggle Button */}
@@ -255,41 +214,25 @@ const Navbar = ({ onTrackOrder }) => {
                 </a>
               ))}
               <div className="pt-4 border-t border-white/10 w-full flex flex-col items-center gap-3">
-                {isSignedIn ? (
-                  <>
-                    <button
-                      onClick={() => { setMobileMenuOpen(false); onTrackOrder?.(); }}
-                      className="flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-5 py-2.5
-                                 font-sans text-base font-bold text-white"
-                    >
-                      <Receipt className="h-4 w-4" /> Track my orders
-                    </button>
-                    {/* Sign out has to be reachable on mobile too — the
-                        desktop dropdown doesn't render at this breakpoint. */}
-                    <button
-                      onClick={() => { setMobileMenuOpen(false); signOut(); }}
-                      className="flex items-center gap-2 rounded-full border border-white/25 px-5 py-2.5
-                                 font-sans text-base font-bold text-white/80"
-                    >
-                      <LogOut className="h-4 w-4" /> Sign out
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => { setMobileMenuOpen(false); setAuthOpen(true); }}
-                    className="flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-5 py-2.5
-                               font-sans text-base font-bold text-white"
-                  >
-                    <LogIn className="h-4 w-4" /> Sign in
-                  </button>
-                )}
+                <p className="text-xs font-semibold uppercase tracking-wider text-brand-secondary">
+                  Download HomBites App
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2.5 w-full items-center justify-center">
+                  <GooglePlayButton size="small" />
+                  <AppStoreButton size="small" />
+                </div>
+
+                {/*
+                  Mobile login and orders commented out:
+                  {isSignedIn ? (...) : (...)}
+                */}
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
+      {/* <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} /> */}
     </>
   );
 };

@@ -35,8 +35,13 @@ function safeNumber(value, fallback) {
  */
 export function deliveryFeeConfig(settings) {
   const s = settings || {};
+  const rawBase = safeNumber(s.deliveryBaseCharge, null);
+  const legacyBase = safeNumber(s.deliveryCharge, null);
+  const base = rawBase !== null
+    ? rawBase
+    : (legacyBase !== null ? legacyBase : DELIVERY_FEE_DEFAULTS.baseCharge);
   return {
-    baseCharge: safeNumber(s.deliveryBaseCharge, DELIVERY_FEE_DEFAULTS.baseCharge),
+    baseCharge: base,
     baseDistanceKm: safeNumber(s.deliveryBaseDistanceKm, DELIVERY_FEE_DEFAULTS.baseDistanceKm),
     perExtraKm: safeNumber(s.deliveryPerExtraKm, DELIVERY_FEE_DEFAULTS.perExtraKm),
   };

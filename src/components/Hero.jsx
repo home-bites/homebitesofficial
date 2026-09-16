@@ -5,17 +5,15 @@ import { motion } from 'framer-motion';
 import Container from '../common/Container';
 import Badge from '../common/Badge';
 import BackgroundEffects from './BackgroundEffects';
-import AuthModal from './AuthModal';
+// import AuthModal from './AuthModal';
+import { GooglePlayButton, AppStoreButton } from '../common/AppStoreBadges';
 import appScreenHero from '../assets/app_screen_hero.webp';
 import foodPlate from '../assets/food_plate.webp';
 import quickInfo from '../assets/quick_info.webp';
 
 const Hero = () => {
-  // The hero owns its own auth dialog rather than taking a callback prop.
-  // Navbar already does the same, and AuthModal closes itself once the user is
-  // signed in — at which point App's LandingOrApp redirects into /home, so
-  // neither copy needs to know about the other.
-  const [authOpen, setAuthOpen] = useState(false);
+  // Auth modal commented out — order and account features are on mobile apps
+  // const [authOpen, setAuthOpen] = useState(false);
 
   // Fade-in-up variants for clean entrance
   const fadeInUp = {
@@ -70,41 +68,35 @@ const Hero = () => {
               <p className="text-brand-offwhite/80 text-base md:text-lg">Delivered straight to your doorstep from your favorite local kitchens.</p>
             </motion.div>
 
-            {/* CTAs Stacked Vertically for Perfect Left Edge Alignment */}
+            {/* App Store / Play Store Download CTAs */}
             <motion.div
               custom={3}
               variants={fadeInUp}
               initial="hidden"
               animate="visible"
-              className="flex flex-col items-start gap-5 w-full sm:w-auto"
+              className="flex flex-col items-start gap-4 w-full sm:w-auto"
             >
               {/*
-                Customer access, not a waiting list.
+                Account creation and login commented out as requested.
+                Ordering is now available on Android and iOS mobile apps.
 
-                This block held a disabled "COMING SOON" button and the Play
-                Store and App Store badges. The website now *is* the customer
-                experience — ordering, tracking and subscriptions all run here
-                — so advertising an unreleased app above a working storefront
-                told visitors the opposite of the truth and gave them nothing
-                to click.
+                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+                  <button onClick={() => setAuthOpen(true)} className="...">Create account</button>
+                  <button onClick={() => setAuthOpen(true)} className="...">Log in</button>
+                </div>
               */}
-              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-                <button
-                  onClick={() => setAuthOpen(true)}
-                  className="rounded-xl bg-brand-secondary px-8 py-4 font-display text-base font-extrabold tracking-wider text-brand-primary shadow-lg transition-transform hover:scale-[1.02] active:scale-95 md:text-lg"
-                >
-                  Create account
-                </button>
-                <button
-                  onClick={() => setAuthOpen(true)}
-                  className="rounded-xl border border-brand-offwhite/30 px-8 py-4 font-display text-base font-extrabold tracking-wider text-brand-offwhite transition-colors hover:bg-brand-offwhite/10 md:text-lg"
-                >
-                  Log in
-                </button>
+
+              <p className="font-sans text-sm md:text-base font-semibold text-brand-secondary/95">
+                Download HomBites - Delicious homemade food delivered straight to your doorstep!
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-3.5 w-full sm:w-auto">
+                <GooglePlayButton size="default" />
+                <AppStoreButton size="default" />
               </div>
 
-              <span className="ml-1 mt-1 block font-display text-xs font-bold uppercase tracking-widest text-brand-offwhite/40">
-                Order online • Live tracking • Meal subscriptions
+              <span className="ml-1 block font-display text-xs font-bold uppercase tracking-widest text-brand-offwhite/50">
+                Available now on Google Play &amp; App Store
               </span>
             </motion.div>
           </div>
@@ -209,7 +201,7 @@ const Hero = () => {
         </Container>
       </div>
 
-      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
+      {/* <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} /> */}
     </section>
   );
 };

@@ -59,14 +59,15 @@ function RouteFallback() {
  * visitor who has not signed in.
  */
 function Landing() {
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [trackingOpen, setTrackingOpen] = useState(false);
+  // Order keeping and tracking modals commented out — official page is presentation & menu showcase only
+  // const [checkoutOpen, setCheckoutOpen] = useState(false);
+  // const [trackingOpen, setTrackingOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [placed, setPlaced] = useState(null);
+  // const [placed, setPlaced] = useState(null);
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#F8F5EE] text-brand-dark selection:bg-brand-secondary/35 selection:text-brand-primary">
-      <Navbar onTrackOrder={() => setTrackingOpen(true)} />
+      <Navbar />
 
       <Hero />
       <About />
@@ -77,33 +78,36 @@ function Landing() {
 
       <Footer onOpenHelp={() => setHelpOpen(true)} />
 
-      <CartBar onOpen={() => setCheckoutOpen(true)} />
+      {/*
+        Order keeping and checkout features commented out —
+        official page is showcase only; orders are placed exclusively in mobile apps.
 
-      <CheckoutModal
-        open={checkoutOpen}
-        onClose={() => setCheckoutOpen(false)}
-        onPlaced={(result) => { setCheckoutOpen(false); setPlaced(result); }}
-      />
+        <CartBar onOpen={() => setCheckoutOpen(true)} />
 
-      <OrderPlaced
-        result={placed}
-        onTrack={() => { setPlaced(null); setTrackingOpen(true); }}
-        onClose={() => setPlaced(null)}
-      />
+        <CheckoutModal
+          open={checkoutOpen}
+          onClose={() => setCheckoutOpen(false)}
+          onPlaced={(result) => { setCheckoutOpen(false); setPlaced(result); }}
+        />
 
-      <OrderTracking open={trackingOpen} onClose={() => setTrackingOpen(false)} />
+        <OrderPlaced
+          result={placed}
+          onTrack={() => { setPlaced(null); setTrackingOpen(true); }}
+          onClose={() => setPlaced(null)}
+        />
+
+        <OrderTracking open={trackingOpen} onClose={() => setTrackingOpen(false)} />
+      */}
       <HelpCenter open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
 
 /**
- * Sends an already-signed-in visitor from the landing page into the app.
- *
- * Waits for `loading` to resolve first. Redirecting on `isSignedIn` alone
- * would flash the marketing page on every refresh, because AuthContext has not
- * yet heard back from onAuthStateChanged at first paint.
+ * Routing to customer app login/home commented out as requested.
+ * Visitors always see the official showcase landing page with mobile app download links.
  */
+/*
 function LandingOrApp() {
   const { isSignedIn, loading } = useAuth();
   if (loading) {
@@ -115,6 +119,7 @@ function LandingOrApp() {
   }
   return isSignedIn ? <Navigate to="/home" replace /> : <Landing />;
 }
+*/
 
 export default function App() {
   return (
@@ -134,27 +139,29 @@ export default function App() {
           future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
         >
           <Routes>
-            <Route path="/" element={<LandingOrApp />} />
+            <Route path="/" element={<Landing />} />
 
-            {/* Customer app. One guard on the layout rather than one per
-                child — a route added later inherits protection instead of
-                needing somebody to remember to wrap it. */}
-            <Route
-              element={
-                <ProtectedRoute>
-                  <Suspense fallback={<RouteFallback />}>
-                    <AppShell />
-                  </Suspense>
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/home" element={<HomePage />} />
-              <Route path="/cart" element={<CartPage />} />
-              <Route path="/diet-plans" element={<DietPlansPage />} />
-              <Route path="/orders" element={<OrdersPage />} />
-              <Route path="/subscriptions" element={<SubscriptionsPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-            </Route>
+            {/*
+              Customer app routes commented out as requested.
+              All ordering and account features are now handled via the mobile apps.
+
+              <Route
+                element={
+                  <ProtectedRoute>
+                    <Suspense fallback={<RouteFallback />}>
+                      <AppShell />
+                    </Suspense>
+                  </ProtectedRoute>
+                }
+              >
+                <Route path="/home" element={<HomePage />} />
+                <Route path="/cart" element={<CartPage />} />
+                <Route path="/diet-plans" element={<DietPlansPage />} />
+                <Route path="/orders" element={<OrdersPage />} />
+                <Route path="/subscriptions" element={<SubscriptionsPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+              </Route>
+            */}
 
             {/* Unknown paths go home rather than to a blank screen. */}
             <Route path="*" element={<Navigate to="/" replace />} />

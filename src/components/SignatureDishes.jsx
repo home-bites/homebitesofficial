@@ -5,7 +5,8 @@ import { Plus, Minus, Leaf, Drumstick, Egg, Sparkles } from 'lucide-react';
 import Container from '../common/Container';
 import { db, isConfigured } from '../lib/firebase';
 import { inr } from '../lib/format';
-import { useCart } from '../context/CartContext';
+// import { useCart } from '../context/CartContext';
+import { GooglePlayButton, AppStoreButton } from '../common/AppStoreBadges';
 import DishDetail from './DishDetail';
 import { normalizeMenuItem, isListable, sortMenuItems } from '../lib/menuItem';
 import { useStoreOpen } from '../lib/useStoreOpen';
@@ -113,38 +114,25 @@ function DishCard({ item, qty, onAdd, onRemove, onOpen, index, storeOpen = true 
             )}
           </div>
 
-          {!orderable ? (
-            <button
-              disabled
-              className="rounded-xl border-2 border-gray-300 px-4 py-1.5 font-sans text-sm font-bold text-gray-400 bg-gray-100 cursor-not-allowed"
-            >
-              {item.available ? 'Closed' : 'Sold Out'}
-            </button>
-          ) : qty === 0 ? (
-            <button
-              onClick={() => onAdd(item)}
-              className="rounded-xl border-2 border-brand-primary px-4 py-1.5 font-sans text-sm font-bold text-brand-primary
-                         transition-all duration-200 hover:bg-brand-primary hover:text-white"
-            >
-              Add
-            </button>
-          ) : (
-            <div className="flex items-center gap-3 rounded-xl bg-brand-primary px-2 py-1.5 text-white shadow-md">
-              <button
-                onClick={() => onRemove(item.id)}
-                className="flex h-6 w-6 items-center justify-center rounded-md bg-white/20 hover:bg-white/30"
-              >
-                <Minus className="h-4 w-4" />
-              </button>
-              <span className="w-4 text-center font-sans text-sm font-bold">{qty}</span>
-              <button
-                onClick={() => onAdd(item)}
-                className="flex h-6 w-6 items-center justify-center rounded-md bg-white/20 hover:bg-white/30"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-            </div>
-          )}
+          {/*
+            Order keeping / cart controls commented out as requested.
+            Official site is menu showcase only; orders are placed via mobile apps.
+
+            {!orderable ? (
+              <button disabled ...>{item.available ? 'Closed' : 'Sold Out'}</button>
+            ) : qty === 0 ? (
+              <button onClick={() => onAdd(item)} ...>Add</button>
+            ) : (
+              <div ...><Minus .../><span>{qty}</span><Plus .../></div>
+            )}
+          */}
+          <button
+            type="button"
+            onClick={() => onOpen(item)}
+            className="rounded-xl border border-brand-primary/25 bg-brand-primary/5 px-3.5 py-1.5 font-sans text-xs font-bold text-brand-primary transition-all duration-200 hover:bg-brand-primary hover:text-white"
+          >
+            View Details
+          </button>
         </div>
       </div>
     </motion.article>
@@ -152,7 +140,8 @@ function DishCard({ item, qty, onAdd, onRemove, onOpen, index, storeOpen = true 
 }
 
 export default function SignatureDishes() {
-  const { add, remove, qtyOf } = useCart();
+  // Order keeping cart hook commented out as requested:
+  // const { add, remove, qtyOf } = useCart();
   const { storeOpen, closedMessage } = useStoreOpen();
   // The dish whose full detail sheet is open, or null.
   const [openDish, setOpenDish] = useState(null);
@@ -437,14 +426,30 @@ export default function SignatureDishes() {
                 key={item.id}
                 item={item}
                 index={i}
-                qty={qtyOf(item.id)}
-                onAdd={add}
-                onRemove={remove}
                 onOpen={setOpenDish}
               />
             ))}
           </div>
         )}
+
+        {/* Mobile app ordering banner */}
+        <div className="mt-14 rounded-2xl border border-brand-primary/15 bg-white p-6 md:p-8 shadow-sm text-center flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="text-left">
+            <span className="text-xs font-bold uppercase tracking-wider text-brand-secondary">
+              Order Fresh From Local Kitchens
+            </span>
+            <h4 className="font-display font-bold text-xl md:text-2xl text-brand-primary mt-1">
+              Craving these dishes?
+            </h4>
+            <p className="font-sans text-xs md:text-sm text-brand-dark/70 mt-1 max-w-xl">
+              Download HomBites - Delicious homemade food delivered straight to your doorstep!
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto items-center">
+            <GooglePlayButton size="default" theme="light" />
+            <AppStoreButton size="default" theme="light" />
+          </div>
+        </div>
       </Container>
 
       {/* Rendered from the same parsed item the grid holds, so the sheet can

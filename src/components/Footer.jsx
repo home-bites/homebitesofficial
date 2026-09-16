@@ -2,6 +2,7 @@ import React from 'react';
 import { LifeBuoy } from 'lucide-react';
 import logo from '../assets/logo.webp';
 import Container from '../common/Container';
+import { GooglePlayButton, AppStoreButton } from '../common/AppStoreBadges';
 
 // Same source of truth as the Help Centre, overridable from .env.
 const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@hombites.com';
@@ -166,6 +167,16 @@ const Footer = ({ onOpenHelp }) => {
                   {social.icon}
                 </a>
               ))}
+            </div>
+
+            <div className="mt-6 flex flex-col gap-2.5">
+              <span className="text-[11px] font-sans font-semibold uppercase tracking-wider text-brand-secondary">
+                Get the App
+              </span>
+              <div className="flex flex-col gap-2">
+                <GooglePlayButton size="small" />
+                <AppStoreButton size="small" />
+              </div>
             </div>
           </div>
 

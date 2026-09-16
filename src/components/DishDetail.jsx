@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   X, Leaf, Drumstick, Egg, Clock, Flame, Plus, Minus, ImageOff, AlertTriangle,
 } from 'lucide-react';
-import { useCart } from '../context/CartContext';
+// import { useCart } from '../context/CartContext';
+import { GooglePlayButton, AppStoreButton } from '../common/AppStoreBadges';
 
 /**
  * Everything the kitchen recorded about a dish, and nothing it did not.
@@ -130,7 +131,8 @@ function DishImage({ urls, name }) {
 }
 
 export default function DishDetail({ dish, onClose }) {
-  const { add } = useCart();
+  // Order keeping / cart hook commented out as requested:
+  // const { add } = useCart();
   const [qty, setQty] = useState(1);
   const [picked, setPicked] = useState({});   // addon index -> true
 
@@ -172,10 +174,12 @@ export default function DishDetail({ dish, onClose }) {
     ? Math.round(((dish.originalPrice - dish.price) / dish.originalPrice) * 100)
     : 0;
 
+  /*
   function addToCart() {
     add(dish, { addons: chosen.map((a) => ({ name: a.name, price: Number(a.price) || 0, isVeg: a.isVeg })), qty });
     onClose();
   }
+  */
 
   return (
     <div
@@ -326,49 +330,31 @@ export default function DishDetail({ dish, onClose }) {
           </div>
         </div>
 
-        {/* Sticky action bar. Quantity and the running line total sit together
-            so the number on the button is always the number being added. */}
-        <div className="flex items-center gap-3 border-t border-brand-primary/10 bg-white p-3
-                        pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          {dish.available === false ? (
-            <p className="flex-1 text-center font-sans text-[13px] font-semibold text-brand-dark/45">
-              Currently unavailable
-            </p>
-          ) : (
-            <>
-              <div className="flex items-center gap-1 rounded-xl border border-brand-primary/20 px-1">
-                <button
-                  type="button"
-                  onClick={() => setQty((q) => Math.max(1, q - 1))}
-                  disabled={qty <= 1}
-                  aria-label="Reduce quantity"
-                  className="flex h-9 w-9 items-center justify-center text-brand-primary disabled:opacity-30"
-                >
-                  <Minus className="h-4 w-4" />
-                </button>
-                <span className="min-w-[1.5rem] text-center font-sans text-sm font-bold text-brand-dark">
-                  {qty}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setQty((q) => Math.min(20, q + 1))}
-                  aria-label="Increase quantity"
-                  className="flex h-9 w-9 items-center justify-center text-brand-primary"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={addToCart}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-primary
-                           px-4 py-3 font-sans text-sm font-bold text-white transition
-                           hover:bg-brand-primary/90"
-              >
-                Add · ₹{Number(lineTotal.toFixed(2))}
-              </button>
-            </>
-          )}
+        {/* Sticky action bar: App download to order */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-brand-primary/10 bg-white p-4
+                        pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {/*
+            Order keeping & add-to-cart controls commented out as requested.
+            Orders are placed exclusively via the mobile apps.
+
+            {dish.available === false ? (
+              <p className="...">Currently unavailable</p>
+            ) : (
+              <div ...><Minus .../><span>{qty}</span><Plus .../><button onClick={addToCart}>Add</button></div>
+            )}
+          */}
+          <div className="flex flex-col text-left">
+            <span className="text-[11px] font-sans font-medium text-brand-dark/60">
+              Want to order this dish?
+            </span>
+            <span className="font-display text-sm font-bold text-brand-primary">
+              Order exclusively on the HomBites App
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <GooglePlayButton size="small" theme="light" />
+            <AppStoreButton size="small" theme="light" />
+          </div>
         </div>
       </div>
     </div>

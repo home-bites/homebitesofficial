@@ -6,6 +6,7 @@ import appScreen from '../assets/app_screen.webp';
 import foodPlate from '../assets/food_plate.webp';
 import deliveryBag from '../assets/delivery_bag.webp';
 import cloche from '../assets/cloche.webp';
+import { GooglePlayButton, AppStoreButton } from '../common/AppStoreBadges';
 
 const Showcase = () => {
   return (
@@ -51,6 +52,11 @@ const Showcase = () => {
                     No lag, zero layout shifts, and rapid transitions. Crafted for high performance.
                   </p>
                 </div>
+              </div>
+
+              <div className="pt-4 flex flex-col sm:flex-row gap-3">
+                <GooglePlayButton size="default" />
+                <AppStoreButton size="default" />
               </div>
             </div>
           </div>
